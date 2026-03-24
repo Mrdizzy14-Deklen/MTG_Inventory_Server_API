@@ -37,7 +37,7 @@ def scryfall_sync():
     
     sql = """
         INSERT INTO ref_cards (oracle_id, card_name, type_line, mana_cost, rarity, text_box, power, toughness, w, u, b, r, g)
-        VALUES (%s, %s, %s, %d, %s, %s, %d, %d, %d, %d, %d, %d, %d)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE 
             card_name = VALUES(card_name),
             type_line = VALUES(type_line),
