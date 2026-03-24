@@ -27,3 +27,21 @@ CREATE TABLE inventory (
 	CONSTRAINT user_card_id UNIQUE (user_id, oracle_id),
 	CONSTRAINT positive_cards CHECK (quantity > 0)
 );
+
+CREATE TABLE ref_cards (
+	oracle_id VARCHAR(36) NOT NULL,
+    card_name VARCHAR(255) NOT NULL,
+    type_line VARCHAR(255) NOT NULL,
+    mana_cost INT DEFAULT 0 NOT NULL,
+    rarity CHAR DEFAULT 'C' NOT NULL,
+	text_box TEXT,
+	power INT,
+	toughness INT,
+	w BOOLEAN,
+	u BOOLEAN,
+	b BOOLEAN,
+	r BOOLEAN,
+	g BOOLEAN,
+
+	PRIMARY KEY (oracle_id)
+);
