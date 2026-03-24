@@ -45,3 +45,8 @@ CREATE TABLE ref_cards (
 
 	PRIMARY KEY (oracle_id)
 );
+
+CREATE TABLE meta_data (
+    meta_key VARCHAR(50) PRIMARY KEY,
+    meta_value VARCHAR(100)
+);
