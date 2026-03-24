@@ -100,7 +100,7 @@ def scryfall_sync():
 
     # Update last sync date in db
     sql = "UPDATE meta_data SET meta_value = %s WHERE meta_key = 'last_scryfall_sync'"
-    cursor.execute(sql, today)
+    cursor.execute(sql, (today,))
     db.commit()
 
     cursor.close()
