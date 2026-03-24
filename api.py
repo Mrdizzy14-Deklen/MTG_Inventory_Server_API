@@ -74,6 +74,50 @@ def add_card(text: str, user_id: int, quantity: int = 1):
         finally:
             db.close()
 
+# Move a card between users
+@app.post("/move/card")
+def move_card(text: str, from_user_id: int, to_user_id: int, quantity: int = 1):
+    db = get_db()
+    with db.cursor(dictionary=True) as cursor:
+        try:
+            # Get current quantity for from_user
+            query_from = """
+                SELECT i.oracle_id, i.quantity 
+                FROM inventory i
+                JOIN ref_cards r ON i.oracle_id = r.oracle_id
+                WHERE r.card_name = %s AND i.user_id = %s
+            """
+            cursor.execute(query_from, (text, from_user_id))
+            item_from = cursor.fetchone()
+
+            if not item_from or item_from['quantity'] < quantity:
+                raise HTTPException(status_code=400, detail="Not enough cards.")
+
+            oracle_id = item_from['oracle_id']
+
+            # Decrement from_user
+            cursor.execute(
+                "UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s",
+                (quantity, from_user_id, oracle_id)
+            )
+
+            # Increment to_user
+            sql_to = """
+                INSERT INTO inventory (user_id, oracle_id, quantity) 
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
+            """
+            cursor.execute(sql_to, (to_user_id, oracle_id, quantity))
+
+            db.commit()
+            return {"status": "success", "message": f"Moved {quantity}x '{text}' from {from_user_id} to {to_user_id}."}
+
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Database update failed.")
+        finally:
+            db.close()
+
 # Remove individual cards
 @app.post("/remove/card")
 def remove_card(text: str, user_id: int, quantity: int = 1):
@@ -134,31 +178,75 @@ class BulkCardRequest(BaseModel):
 @app.post("/import/bulk")
 def add_bulk(request: BulkCardRequest):
     db = get_db()
-    cursor = db.cursor(dictionary=True)
-    count = 0
+    with db.cursor(dictionary=True) as cursor:
+        count = 0
 
-    try:
-        for card in request.cards:
-            # Find the oracle_id
-            cursor.execute("SELECT oracle_id FROM ref_cards WHERE card_name = %s LIMIT 1", (card.name,))
-            ref = cursor.fetchone()
+        try:
+            for card in request.cards:
+                # Find the oracle_id
+                cursor.execute("SELECT oracle_id FROM ref_cards WHERE card_name = %s LIMIT 1", (card.name,))
+                ref = cursor.fetchone()
+                
+                if ref:
+                    sql = """
+                        INSERT INTO inventory (user_id, oracle_id, quantity) 
+                        VALUES (%s, %s, %s)
+                        ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
+                    """
+                    cursor.execute(sql, (request.user_id, ref['oracle_id'], card.quantity))
+                    count += 1
             
-            if ref:
-                sql = """
-                    INSERT INTO inventory (user_id, oracle_id, quantity) 
-                    VALUES (%s, %s, %s)
-                    ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
+            db.commit()
+            return {"status": "success", "message": f"Added {count} cards."}
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Database update failed.")
+        finally:
+            db.close()
+
+# Move bulk cards between users
+@app.post("/move/bulk")
+def move_bulk(request: BulkCardRequest, to_user_id: int):
+    db = get_db()
+    with db.cursor(dictionary=True) as cursor:
+        count = 0
+        try:
+            for card in request.cards:
+                # Get current quantity for from_user
+                query_from = """
+                    SELECT i.oracle_id, i.quantity 
+                    FROM inventory i
+                    JOIN ref_cards r ON i.oracle_id = r.oracle_id
+                    WHERE r.card_name = %s AND i.user_id = %s
                 """
-                cursor.execute(sql, (request.user_id, ref['oracle_id'], card.quantity))
-                count += 1
-        
-        db.commit()
-        return {"status": "success", "message": f"Added {count} cards."}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Database update failed.")
-    finally:
-        db.close()
+                cursor.execute(query_from, (card.name, request.user_id))
+                item_from = cursor.fetchone()
+
+                if item_from and item_from['quantity'] >= card.quantity:
+                    oracle_id = item_from['oracle_id']
+
+                    # Decrement from_user
+                    cursor.execute(
+                        "UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s",
+                        (card.quantity, request.user_id, oracle_id)
+                    )
+
+                    # Increment to_user
+                    sql_to = """
+                        INSERT INTO inventory (user_id, oracle_id, quantity) 
+                        VALUES (%s, %s, %s)
+                        ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
+                    """
+                    cursor.execute(sql_to, (to_user_id, oracle_id, card.quantity))
+                    count += 1
+
+            db.commit()
+            return {"status": "success", "message": f"Moved {count} cards."}
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Database update failed.")
+        finally:
+            db.close()
 
 # Remove bulk cards
 @app.post("/remove/bulk")
