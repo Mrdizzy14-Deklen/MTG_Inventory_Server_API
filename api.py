@@ -45,21 +45,25 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+class UserCreateRequest(BaseModel):
+    username: str
+    password: str
+
 # Register a user account
 @app.post("/users/register")
 @limiter.limit("1/hour")
-def register_user(username: str, password: str, request: Request):
+def register_user(user: UserCreateRequest, request: Request):
     
     # Hash the password before it touches the database
-    hashed_pass = get_password_hash(password)
+    hashed_pass = get_password_hash(user.password)
     
     db = get_db()
     cursor = db.cursor()
     try:
         sql = "INSERT INTO users (username, password_hash) VALUES (%s, %s)"
-        cursor.execute(sql, (username, hashed_pass))
+        cursor.execute(sql, (user.username, hashed_pass))
         db.commit()
-        return {"status": "success", "message": f"User {username} created."}
+        return {"status": "success", "message": f"User {user.username} created."}
     except mysql.connector.Error as err:
         if err.errno == 1062: # Duplicate entry error
             raise HTTPException(status_code=400, detail="Username already taken.")
@@ -68,20 +72,25 @@ def register_user(username: str, password: str, request: Request):
         cursor.close()
         db.close()
 
+class SingleCardRequest(BaseModel):
+    text: str
+    user_id: int
+    quantity: int = 1
+
 # Import individual cards
 @app.post("/import/card")
-def add_card(text: str, user_id: int, quantity: int = 1):
+def add_card(request: SingleCardRequest):
     db = get_db()
     with db.cursor(dictionary=True) as cursor:
         try:
             # Find card in reference table
             query_ref = "SELECT * FROM ref_cards WHERE card_name = %s LIMIT 1"
-            cursor.execute(query_ref, (text,))
+            cursor.execute(query_ref, (request.text,))
             ref_entry = cursor.fetchone()
 
             if not ref_entry:
                 # Card not found
-                raise HTTPException(status_code=404, detail=f"Card '{text}' not found.")
+                raise HTTPException(status_code=404, detail=f"Card '{request.text}' not found.")
             
             oracle_id = ref_entry['oracle_id']
 
@@ -96,16 +105,16 @@ def add_card(text: str, user_id: int, quantity: int = 1):
             """
 
             cursor.execute(sql, (
-                user_id,
+                request.user_id,
                 oracle_id,
-                quantity
+                request.quantity
             ))
 
             db.commit()
 
             return {
                 "status": "success",
-                "message": f"Added {quantity}x '{text}' to inventory for user {user_id}."
+                "message": f"Added {request.quantity}x '{request.text}' to inventory for user {request.user_id}."
             }
         
         except Exception as e:
@@ -114,9 +123,15 @@ def add_card(text: str, user_id: int, quantity: int = 1):
         finally:
             db.close()
 
+class MoveCardRequest(BaseModel):
+    text: str
+    from_user_id: int
+    to_user_id: int
+    quantity: int = 1
+
 # Move a card between users
 @app.post("/move/card")
-def move_card(text: str, from_user_id: int, to_user_id: int, quantity: int = 1):
+def move_card(request: MoveCardRequest):
     db = get_db()
     with db.cursor(dictionary=True) as cursor:
         try:
@@ -127,10 +142,10 @@ def move_card(text: str, from_user_id: int, to_user_id: int, quantity: int = 1):
                 JOIN ref_cards r ON i.oracle_id = r.oracle_id
                 WHERE r.card_name = %s AND i.user_id = %s
             """
-            cursor.execute(query_from, (text, from_user_id))
+            cursor.execute(query_from, (request.text, request.from_user_id))
             item_from = cursor.fetchone()
 
-            if not item_from or item_from['quantity'] < quantity:
+            if not item_from or item_from['quantity'] < request.quantity:
                 raise HTTPException(status_code=400, detail="Not enough cards.")
 
             oracle_id = item_from['oracle_id']
@@ -138,7 +153,7 @@ def move_card(text: str, from_user_id: int, to_user_id: int, quantity: int = 1):
             # Decrement from_user
             cursor.execute(
                 "UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s",
-                (quantity, from_user_id, oracle_id)
+                (request.quantity, request.from_user_id, oracle_id)
             )
 
             # Increment to_user
@@ -147,10 +162,10 @@ def move_card(text: str, from_user_id: int, to_user_id: int, quantity: int = 1):
                 VALUES (%s, %s, %s)
                 ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
             """
-            cursor.execute(sql_to, (to_user_id, oracle_id, quantity))
+            cursor.execute(sql_to, (request.to_user_id, oracle_id, request.quantity))
 
             db.commit()
-            return {"status": "success", "message": f"Moved {quantity}x '{text}' from {from_user_id} to {to_user_id}."}
+            return {"status": "success", "message": f"Moved {request.quantity}x '{request.text}' from {request.from_user_id} to {request.to_user_id}."}
 
         except Exception as e:
             db.rollback()
@@ -160,7 +175,7 @@ def move_card(text: str, from_user_id: int, to_user_id: int, quantity: int = 1):
 
 # Remove individual cards
 @app.post("/remove/card")
-def remove_card(text: str, user_id: int, quantity: int = 1):
+def remove_card(request: SingleCardRequest):
     db = get_db()
     cursor = db.cursor(dictionary=True)
 
@@ -172,7 +187,7 @@ def remove_card(text: str, user_id: int, quantity: int = 1):
             JOIN ref_cards r ON i.oracle_id = r.oracle_id
             WHERE r.card_name = %s AND i.user_id = %s
         """
-        cursor.execute(query, (text, user_id))
+        cursor.execute(query, (request.text, request.user_id))
         item = cursor.fetchone()
 
         if not item:
@@ -182,19 +197,19 @@ def remove_card(text: str, user_id: int, quantity: int = 1):
         oracle_id = item['oracle_id']
 
         # Check if need to remove row
-        if current_qty <= quantity:
+        if current_qty <= request.quantity:
             cursor.execute(
                 "DELETE FROM inventory WHERE user_id = %s AND oracle_id = %s",
-                (user_id, oracle_id)
+                (request.user_id, oracle_id)
             )
-            message = f"Removed all copies of '{text}' from inventory."
+            message = f"Removed all copies of '{request.text}' from inventory."
         else:
             # Decrement
             cursor.execute(
                 "UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s",
-                (quantity, user_id, oracle_id)
+                (request.quantity, request.user_id, oracle_id)
             )
-            message = f"Removed {quantity}x '{text}'. New total: {current_qty - quantity}."
+            message = f"Removed {request.quantity}x '{request.text}'. New total: {current_qty - request.quantity}."
 
         db.commit()
         return {"status": "success", "message": message}
