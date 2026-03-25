@@ -4,6 +4,7 @@ import ijson
 from datetime import date
 import urllib.parse
 import gzip
+import time
 
 def scryfall_sync():
 
@@ -21,18 +22,13 @@ def scryfall_sync():
 
     # Get the last sync date from db
     cursor.execute("SELECT meta_value FROM meta_data WHERE meta_key = 'last_scryfall_sync'")
-    last_update_date = cursor.fetchone()
+    row = cursor.fetchone()
 
-    if last_update_date is None:
-        last_update_date = "0000-00-00"
-    else:        
-        last_update_date = last_update_date.isoformat()
+    last_update_date = row[0] if row else "0000-00-00"
 
     encoded_query = urllib.parse.quote(f'date>"{last_update_date}" date<="{today}"')
 
-    # Get bulk data since last sync
-    bulk = requests.get(f"https://api.scryfall.com/cards/search?q={encoded_query}", stream=True)
-    
+    next_page_url = f"https://api.scryfall.com/cards/search?q={encoded_query}"
 
     print(f"Syncing cards to database...")
     
@@ -54,61 +50,72 @@ def scryfall_sync():
             g = VALUES(g)
     """
 
-    if bulk.headers.get('Content-Encoding') == 'gzip':
-        stream = gzip.GzipFile(fileobj=bulk.raw)
-    else:
-        stream = bulk.raw
-
-    # Batch upload cards
-    cards_generator = ijson.items(stream, 'data.item')
-    
-    batch = []
     count = 0
 
-    for card in cards_generator:
+    while next_page_url:
+        print(f"Fetching: {next_page_url}")
+        bulk = requests.get(next_page_url, stream=True)
 
-        colors = card.get('color_identity', [])
+        if bulk.headers.get('Content-Encoding') == 'gzip':
+            stream = gzip.GzipFile(fileobj=bulk.raw)
+        else:
+            stream = bulk.raw
+        parser = ijson.parse(stream)
+        next_page_url = None
 
-        w = 1 if 'W' in colors else 0
-        u = 1 if 'U' in colors else 0
-        b = 1 if 'B' in colors else 0
-        r = 1 if 'R' in colors else 0
-        g = 1 if 'G' in colors else 0
+        # Batch upload cards
+        cards_generator = ijson.items(stream, 'data.item')
+    
+        batch = []
 
-        # Trim card data
-        card_data = (
-            card.get('oracle_id'),
-            card.get('name'),
-            card.get('type_line'),
-            card.get('cmc'),
-            card.get('rarity'),
-            card.get('oracle_text'),
-            card.get('power'),
-            card.get('toughness'),
-            w, u, b, r, g
-        )
+        for card in cards_generator:
 
-        batch.append(card_data)
+            colors = card.get('color_identity', [])
+
+            w = 1 if 'W' in colors else 0
+            u = 1 if 'U' in colors else 0
+            b = 1 if 'B' in colors else 0
+            r = 1 if 'R' in colors else 0
+            g = 1 if 'G' in colors else 0
+
+            # Trim card data
+            card_data = (
+                card.get('oracle_id'),
+                card.get('name'),
+                card.get('type_line'),
+                card.get('cmc'),
+                card.get('rarity'),
+                card.get('oracle_text'),
+                card.get('power'),
+                card.get('toughness'),
+                w, u, b, r, g
+            )
+
+            batch.append(card_data)
         
-        # Insert in batches
-        if len(batch) >= 1000:
+            # Insert in batches
+            if len(batch) >= 1000:
+                cursor.executemany(sql, batch)
+                db.commit()
+                count += len(batch)
+                batch = []
+
+        # Insert remaining cards
+        if batch:
             cursor.executemany(sql, batch)
             db.commit()
             count += len(batch)
-            print(f"Synced {count} cards...")
-            batch = []
-
-    # Insert remaining cards
-    if batch:
-        cursor.executemany(sql, batch)
-        db.commit()
-        count += len(batch)
+        
+        meta_resp = requests.get(bulk.url).json() 
+        next_page_url = meta_resp.get('next_page') if meta_resp.get('has_more') else None
+        time.sleep(0.1)
 
     # Update last sync date in db
-    sql = "UPDATE meta_data SET meta_value = %s WHERE meta_key = 'last_scryfall_sync'"
-    cursor.execute(sql, (today,))
+    cursor.execute("""
+                   INSERT INTO meta_data (meta_key, meta_value) 
+                   VALUES ('last_scryfall_sync', %s) 
+                   ON DUPLICATE KEY UPDATE meta_value = VALUES(meta_value)""", (today,))
     db.commit()
-
     cursor.close()
     db.close()
     print(f"Total cards synced: {count}")
