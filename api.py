@@ -12,7 +12,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from passlib.context import CryptContext
 from jose import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 # Load the API key from env var
 API_KEY = os.getenv("API_KEY")
@@ -59,7 +59,7 @@ def verify_password(plain_password: str, hashed_password: str):
 # Creates a JWT access token
 def create_access_token(data: dict):
     to_encode = data.copy()
-    expire = datetime.datetime.now(datetime.UTC) + timedelta(hours=2)
+    expire = datetime.now(UTC) + timedelta(hours=2)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
