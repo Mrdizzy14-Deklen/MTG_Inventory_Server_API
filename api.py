@@ -31,6 +31,15 @@ def get_db():
         database="mtg_inventory"
     )
 
+def get_user(username: str):
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+    user = cursor.fetchone()
+    cursor.close()
+    db.close()
+    return user
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Hashes a password to store
@@ -71,6 +80,23 @@ def register_user(user: UserCreateRequest, request: Request):
     finally:
         cursor.close()
         db.close()
+
+class UserLoginRequest(BaseModel):
+    username: str
+    password: str
+
+@app.post("/users/login")
+def login_user(request: UserLoginRequest):
+
+    user = get_user(request.username)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if not verify_password(request.password, user['password_hash']):
+        raise HTTPException(status_code=400, detail="Invalid password.")
+
+    return {"status": "success", "message": "Login successful."}
 
 class SingleCardRequest(BaseModel):
     text: str
