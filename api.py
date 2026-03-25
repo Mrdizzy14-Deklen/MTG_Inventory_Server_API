@@ -406,6 +406,27 @@ def remove_bulk(request: BulkCardRequest, user_id: int = Depends(get_current_use
     finally:
         db.close()
 
+@app.get("/inventory/user")
+def view_inventory(user_id: int = Depends(get_current_user)):
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+
+    try:
+        query = """
+            SELECT r.card_name, i.quantity 
+            FROM inventory i
+            JOIN ref_cards r ON i.oracle_id = r.oracle_id
+            WHERE i.user_id = %s
+        """
+        cursor.execute(query, (user_id,))
+        items = cursor.fetchall()
+        return {"status": "success", "inventory": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Database query failed.")
+    finally:
+        cursor.close()
+        db.close()
+
 # Honey pot to detect bots
 @app.get("/.env")
 @app.get("/wp-admin")
