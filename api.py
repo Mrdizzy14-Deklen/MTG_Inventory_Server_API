@@ -5,7 +5,8 @@ from fastapi import FastAPI, HTTPException, Request, Security, Depends
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.security import OAuth2PasswordBearer
 import mysql.connector
-from pydantic import BaseModel
+from mysql.connector import pooling
+from pydantic import BaseModel, Field
 from typing import List
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -29,14 +30,21 @@ def verify_api_key(key: str = Security(api_key_header)):
 
 app = FastAPI(dependencies=[Depends(verify_api_key)])
 
-def get_db():
-    return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="",
-        database="mtg_inventory"
-    )
+# Create a pool of connections
+db_pool = pooling.MySQLConnectionPool(
+    pool_name="mtg_pool",
+    pool_size=5,
+    host="localhost",
+    user="root",
+    password="",
+    database="mtg_inventory"
+)
 
+# Gets a database connector
+def get_db():
+    return db_pool.get_connection()
+
+# Gets a user by username
 def get_user(username: str):
     db = get_db()
     cursor = db.cursor(dictionary=True)
@@ -76,19 +84,25 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     except:
         raise HTTPException(status_code=401, detail="Could not validate credentials")
 
+# Used to limit API usage to prevent abuse
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 class UserCreateRequest(BaseModel):
-    username: str
-    password: str
+    # Min 3 chars, Max 20, only alphanumeric/underscores
+    username: str = Field(..., min_length=3, max_length=20, pattern="^[a-zA-Z0-9_]+$")
+    # Enforce a minimum password length for security
+    password: str = Field(..., min_length=8, max_length=100)
 
 # Register a user account
 @app.post("/users/register")
 @limiter.limit("1/hour")
 def register_user(user: UserCreateRequest, request: Request):
     
+    if user.username.strip().lower() in ["admin", "root", "system", "api"]:
+        raise HTTPException(status_code=400, detail="Invalid username.")
+
     # Hash the password before it touches the database
     hashed_pass = get_password_hash(user.password)
     
