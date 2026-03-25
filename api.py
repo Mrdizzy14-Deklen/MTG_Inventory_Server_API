@@ -177,7 +177,7 @@ def add_card(request: SingleCardRequest, user_id: int = Depends(get_current_user
 
 class MoveCardRequest(BaseModel):
     text: str
-    to_username: int
+    to_username: str
     quantity: int = 1
 
 # Move a card between users
@@ -310,7 +310,7 @@ def add_bulk(request: BulkCardRequest, user_id: int = Depends(get_current_user))
             db.close()
 
 class MoveBulkCardRequest(BaseModel):
-    to_username: int
+    to_username: str
     cards: List[CardRequest]
 
 # Move bulk cards between users
