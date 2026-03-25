@@ -195,7 +195,7 @@ class MoveCardRequest(BaseModel):
     quantity: int = 1
 
 # Move a card between users
-@app.post("/move/card")
+@app.post("/trade/card")
 def move_card(request: MoveCardRequest, user_id: int = Depends(get_current_user)):
     db = get_db()
     with db.cursor(dictionary=True) as cursor:
@@ -328,7 +328,7 @@ class MoveBulkCardRequest(BaseModel):
     cards: List[CardRequest]
 
 # Move bulk cards between users
-@app.post("/move/bulk")
+@app.post("/trade/bulk")
 def move_bulk(request: MoveBulkCardRequest, user_id: int = Depends(get_current_user)):
     db = get_db()
     with db.cursor(dictionary=True) as cursor:
@@ -426,6 +426,51 @@ def view_inventory(user_id: int = Depends(get_current_user)):
     finally:
         cursor.close()
         db.close()
+
+class TradePreferenceRequest(BaseModel):
+    oracle_id: str = None   # Specific card
+    tag: str = None         # Title for preference
+    status: str             # 'for_trade', 'looking_for', 'not_for_trade'
+    notes: str = ""
+
+@app.post("/trade/preference/set")
+def set_trade_preference(request: TradePreferenceRequest, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    with db.cursor() as cursor:
+        try:
+            sql = """
+                INSERT INTO trade_preferences (user_id, oracle_id, tag, trade_status, notes)
+                VALUES (%s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE  oracle_id = VALUES(oracle_id), tag = VALUES(tag), trade_status = VALUES(trade_status), notes = VALUES(notes)
+            """
+            cursor.execute(sql, (user_id, request.oracle_id, request.tag, request.status, request.notes))
+            db.commit()
+            return {"status": "success", "message": "Trade preference updated."}
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Failed to save preference.")
+        finally:
+            db.close()
+
+@app.post("/trade/preference/remove")
+def remove_trade_preference(request: TradePreferenceRequest, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    with db.cursor() as cursor:
+        try:
+            sql = """
+                DELETE FROM trade_preferences 
+                WHERE user_id = %s 
+                AND (oracle_id <=> %s) 
+                AND (tag <=> %s)
+            """
+            cursor.execute(sql, (user_id, request.oracle_id, request.tag))
+            db.commit()
+            return {"status": "success", "message": "Trade preference removed."}
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Failed to save preference.")
+        finally:
+            db.close()
 
 # Honey pot to detect bots
 @app.get("/.env")
