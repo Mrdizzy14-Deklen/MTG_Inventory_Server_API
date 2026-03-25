@@ -33,7 +33,7 @@ def scryfall_sync():
     bulk = requests.get(f"https://api.scryfall.com/cards/search?q={encoded_query}", stream=True)
     
 
-    print(f"Syncing {len(bulk)} cards to database...")
+    print(f"Syncing cards to database...")
     
     sql = """
         INSERT INTO ref_cards (oracle_id, card_name, type_line, mana_cost, rarity, text_box, power, toughness, w, u, b, r, g)
@@ -54,7 +54,7 @@ def scryfall_sync():
     """
 
     # Batch upload cards
-    cards_generator = ijson.items(bulk.raw, 'item')
+    cards_generator = ijson.items(bulk.raw, 'data.item')
     
     batch = []
     count = 0
