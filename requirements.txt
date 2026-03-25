@@ -5,3 +5,7 @@ mysql-connector-python
 pydantic
 requests
 ijson
+gzip
+time
+slowapi
+passlib
