@@ -3,6 +3,7 @@ import mysql.connector
 import ijson
 from datetime import date
 import urllib.parse
+import gzip
 
 def scryfall_sync():
 
@@ -53,8 +54,13 @@ def scryfall_sync():
             g = VALUES(g)
     """
 
+    if bulk.headers.get('Content-Encoding') == 'gzip':
+        stream = gzip.GzipFile(fileobj=bulk.raw)
+    else:
+        stream = bulk.raw
+
     # Batch upload cards
-    cards_generator = ijson.items(bulk.raw, 'data.item')
+    cards_generator = ijson.items(stream, 'data.item')
     
     batch = []
     count = 0
