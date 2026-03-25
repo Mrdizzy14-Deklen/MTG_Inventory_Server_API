@@ -1,12 +1,15 @@
 from dotenv import load_dotenv
 load_dotenv()  # Load environment variables from .env file
 import os
-from fastapi import FastAPI, HTTPException, Security, Depends
+from fastapi import FastAPI, HTTPException, Request, Security, Depends
 from fastapi.security.api_key import APIKeyHeader
 import mysql.connector
 from pydantic import BaseModel
 from typing import List
-
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from passlib.context import CryptContext
 
 # Load the API key from env var
 API_KEY = os.getenv("API_KEY")
@@ -27,6 +30,43 @@ def get_db():
         password="",
         database="mtg_inventory"
     )
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Hashes a password to store
+def get_password_hash(password: str):
+    return pwd_context.hash(password)
+
+# Check if password valid
+def verify_password(plain_password: str, hashed_password: str):
+    return pwd_context.verify(plain_password, hashed_password)
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Register a user account
+@app.post("/users/register")
+@limiter.limit("1/hour")
+def register_user(username: str, password: str, request: Request):
+    
+    # Hash the password before it touches the database
+    hashed_pass = get_password_hash(password)
+    
+    db = get_db()
+    cursor = db.cursor()
+    try:
+        sql = "INSERT INTO users (username, password_hash) VALUES (%s, %s)"
+        cursor.execute(sql, (username, hashed_pass))
+        db.commit()
+        return {"status": "success", "message": f"User {username} created."}
+    except mysql.connector.Error as err:
+        if err.errno == 1062: # Duplicate entry error
+            raise HTTPException(status_code=400, detail="Username already taken.")
+        raise HTTPException(status_code=500, detail="Database error.")
+    finally:
+        cursor.close()
+        db.close()
 
 # Import individual cards
 @app.post("/import/card")
@@ -282,6 +322,12 @@ def remove_bulk(request: BulkCardRequest):
         raise HTTPException(status_code=500, detail="Database update failed.")
     finally:
         db.close()
+
+# Honey pot to detect bots
+@app.get("/.env")
+@app.get("/wp-admin")
+def honey_pot(request: Request):
+    print(f"SUSPICIOUS ACTIVITY: {request.client.host} tried to access a hidden file.")
 
 if __name__ == "__main__":
     import uvicorn
