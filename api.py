@@ -3,6 +3,7 @@ load_dotenv()  # Load environment variables from .env file
 import os
 from fastapi import FastAPI, HTTPException, Request, Security, Depends
 from fastapi.security.api_key import APIKeyHeader
+from fastapi.security import OAuth2PasswordBearer
 import mysql.connector
 from pydantic import BaseModel
 from typing import List
@@ -10,10 +11,15 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from passlib.context import CryptContext
+from jose import jwt
+from datetime import datetime, timedelta
 
 # Load the API key from env var
 API_KEY = os.getenv("API_KEY")
 api_key_header = APIKeyHeader(name="X-API-KEY")
+
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+ALGORITHM = "HS256"
 
 # Dependency to verify API key
 def verify_api_key(key: str = Security(api_key_header)):
@@ -49,6 +55,26 @@ def get_password_hash(password: str):
 # Check if password valid
 def verify_password(plain_password: str, hashed_password: str):
     return pwd_context.verify(plain_password, hashed_password)
+
+# Creates a JWT access token
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(hours=2)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+# Get user from JWT token
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: int = payload.get("user_id")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return user_id
+    except:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
@@ -95,17 +121,17 @@ def login_user(request: UserLoginRequest):
 
     if not verify_password(request.password, user['password_hash']):
         raise HTTPException(status_code=400, detail="Invalid password.")
-
-    return {"status": "success", "message": "Login successful."}
+    
+    token = create_access_token(data={"user_id": user['id']})
+    return {"access_token": token, "token_type": "bearer", "user_id": user['id']}
 
 class SingleCardRequest(BaseModel):
     text: str
-    user_id: int
     quantity: int = 1
 
 # Import individual cards
 @app.post("/import/card")
-def add_card(request: SingleCardRequest):
+def add_card(request: SingleCardRequest, user_id: int = Depends(get_current_user)):
     db = get_db()
     with db.cursor(dictionary=True) as cursor:
         try:
@@ -131,7 +157,7 @@ def add_card(request: SingleCardRequest):
             """
 
             cursor.execute(sql, (
-                request.user_id,
+                user_id,
                 oracle_id,
                 request.quantity
             ))
@@ -140,7 +166,7 @@ def add_card(request: SingleCardRequest):
 
             return {
                 "status": "success",
-                "message": f"Added {request.quantity}x '{request.text}' to inventory for user {request.user_id}."
+                "message": f"Added {request.quantity}x '{request.text}' to inventory for user {user_id}."
             }
         
         except Exception as e:
@@ -151,13 +177,12 @@ def add_card(request: SingleCardRequest):
 
 class MoveCardRequest(BaseModel):
     text: str
-    from_user_id: int
-    to_user_id: int
+    to_username: int
     quantity: int = 1
 
 # Move a card between users
 @app.post("/move/card")
-def move_card(request: MoveCardRequest):
+def move_card(request: MoveCardRequest, user_id: int = Depends(get_current_user)):
     db = get_db()
     with db.cursor(dictionary=True) as cursor:
         try:
@@ -168,7 +193,7 @@ def move_card(request: MoveCardRequest):
                 JOIN ref_cards r ON i.oracle_id = r.oracle_id
                 WHERE r.card_name = %s AND i.user_id = %s
             """
-            cursor.execute(query_from, (request.text, request.from_user_id))
+            cursor.execute(query_from, (request.text, user_id))
             item_from = cursor.fetchone()
 
             if not item_from or item_from['quantity'] < request.quantity:
@@ -179,7 +204,7 @@ def move_card(request: MoveCardRequest):
             # Decrement from_user
             cursor.execute(
                 "UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s",
-                (request.quantity, request.from_user_id, oracle_id)
+                (request.quantity, user_id, oracle_id)
             )
 
             # Increment to_user
@@ -188,10 +213,10 @@ def move_card(request: MoveCardRequest):
                 VALUES (%s, %s, %s)
                 ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
             """
-            cursor.execute(sql_to, (request.to_user_id, oracle_id, request.quantity))
+            cursor.execute(sql_to, (get_user(request.to_username)['id'], oracle_id, request.quantity))
 
             db.commit()
-            return {"status": "success", "message": f"Moved {request.quantity}x '{request.text}' from {request.from_user_id} to {request.to_user_id}."}
+            return {"status": "success", "message": f"Moved {request.quantity}x '{request.text}' to {request.to_username}."}
 
         except Exception as e:
             db.rollback()
@@ -201,7 +226,7 @@ def move_card(request: MoveCardRequest):
 
 # Remove individual cards
 @app.post("/remove/card")
-def remove_card(request: SingleCardRequest):
+def remove_card(request: SingleCardRequest, user_id: int = Depends(get_current_user)):
     db = get_db()
     cursor = db.cursor(dictionary=True)
 
@@ -213,7 +238,7 @@ def remove_card(request: SingleCardRequest):
             JOIN ref_cards r ON i.oracle_id = r.oracle_id
             WHERE r.card_name = %s AND i.user_id = %s
         """
-        cursor.execute(query, (request.text, request.user_id))
+        cursor.execute(query, (request.text, user_id))
         item = cursor.fetchone()
 
         if not item:
@@ -226,14 +251,14 @@ def remove_card(request: SingleCardRequest):
         if current_qty <= request.quantity:
             cursor.execute(
                 "DELETE FROM inventory WHERE user_id = %s AND oracle_id = %s",
-                (request.user_id, oracle_id)
+                (user_id, oracle_id)
             )
             message = f"Removed all copies of '{request.text}' from inventory."
         else:
             # Decrement
             cursor.execute(
                 "UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s",
-                (request.quantity, request.user_id, oracle_id)
+                (request.quantity, user_id, oracle_id)
             )
             message = f"Removed {request.quantity}x '{request.text}'. New total: {current_qty - request.quantity}."
 
@@ -252,12 +277,11 @@ class CardRequest(BaseModel):
     quantity: int = 1
 
 class BulkCardRequest(BaseModel):
-    user_id: int
     cards: List[CardRequest]
 
 # Import bulk cards
 @app.post("/import/bulk")
-def add_bulk(request: BulkCardRequest):
+def add_bulk(request: BulkCardRequest, user_id: int = Depends(get_current_user)):
     db = get_db()
     with db.cursor(dictionary=True) as cursor:
         count = 0
@@ -274,7 +298,7 @@ def add_bulk(request: BulkCardRequest):
                         VALUES (%s, %s, %s)
                         ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
                     """
-                    cursor.execute(sql, (request.user_id, ref['oracle_id'], card.quantity))
+                    cursor.execute(sql, (user_id, ref['oracle_id'], card.quantity))
                     count += 1
             
             db.commit()
@@ -285,9 +309,13 @@ def add_bulk(request: BulkCardRequest):
         finally:
             db.close()
 
+class MoveBulkCardRequest(BaseModel):
+    to_username: int
+    cards: List[CardRequest]
+
 # Move bulk cards between users
 @app.post("/move/bulk")
-def move_bulk(request: BulkCardRequest, to_user_id: int):
+def move_bulk(request: MoveBulkCardRequest, user_id: int = Depends(get_current_user)):
     db = get_db()
     with db.cursor(dictionary=True) as cursor:
         count = 0
@@ -300,7 +328,7 @@ def move_bulk(request: BulkCardRequest, to_user_id: int):
                     JOIN ref_cards r ON i.oracle_id = r.oracle_id
                     WHERE r.card_name = %s AND i.user_id = %s
                 """
-                cursor.execute(query_from, (card.name, request.user_id))
+                cursor.execute(query_from, (card.name, user_id))
                 item_from = cursor.fetchone()
 
                 if item_from and item_from['quantity'] >= card.quantity:
@@ -309,7 +337,7 @@ def move_bulk(request: BulkCardRequest, to_user_id: int):
                     # Decrement from_user
                     cursor.execute(
                         "UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s",
-                        (card.quantity, request.user_id, oracle_id)
+                        (card.quantity, user_id, oracle_id)
                     )
 
                     # Increment to_user
@@ -318,7 +346,7 @@ def move_bulk(request: BulkCardRequest, to_user_id: int):
                         VALUES (%s, %s, %s)
                         ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
                     """
-                    cursor.execute(sql_to, (to_user_id, oracle_id, card.quantity))
+                    cursor.execute(sql_to, (get_user(request.to_username)['id'], oracle_id, card.quantity))
                     count += 1
 
             db.commit()
@@ -331,7 +359,7 @@ def move_bulk(request: BulkCardRequest, to_user_id: int):
 
 # Remove bulk cards
 @app.post("/remove/bulk")
-def remove_bulk(request: BulkCardRequest):
+def remove_bulk(request: BulkCardRequest, user_id: int = Depends(get_current_user)):
     db = get_db()
     cursor = db.cursor(dictionary=True)
     removed_count = 0
@@ -344,16 +372,16 @@ def remove_bulk(request: BulkCardRequest):
                 JOIN ref_cards r ON i.oracle_id = r.oracle_id
                 WHERE r.card_name = %s AND i.user_id = %s
             """
-            cursor.execute(query, (card.name, request.user_id))
+            cursor.execute(query, (card.name, user_id))
             item = cursor.fetchone()
 
             if item:
                 if item['quantity'] <= card.quantity:
                     cursor.execute("DELETE FROM inventory WHERE user_id = %s AND oracle_id = %s", 
-                                   (request.user_id, item['oracle_id']))
+                                   (user_id, item['oracle_id']))
                 else:
                     cursor.execute("UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s", 
-                                   (card.quantity, request.user_id, item['oracle_id']))
+                                   (card.quantity, user_id, item['oracle_id']))
                 removed_count += 1
 
         db.commit()
