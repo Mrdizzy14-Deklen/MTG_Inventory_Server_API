@@ -5,6 +5,5 @@ mysql-connector-python
 pydantic
 requests
 ijson
-time
 slowapi
 passlib
