@@ -79,7 +79,19 @@ def scryfall_sync():
             r = 1 if 'R' in colors else 0
             g = 1 if 'G' in colors else 0
 
-            image_data = requests.get(card.get('image_uris', {}).get('large', '')).content
+            image_url = card.get('image_uris', {}).get('large')
+            
+            if not image_url and 'card_faces' in card:
+                image_url = card['card_faces'][0].get('image_uris', {}).get('large')
+
+            image_data = None
+            if image_url:
+                try:
+                    img_response = requests.get(image_url)
+                    if img_response.status_code == 200:
+                        image_data = img_response.content
+                except Exception as e:
+                    print(f"Failed to download image for {card.get('name')}: {e}")
 
             # Trim card data
             card_data = (
