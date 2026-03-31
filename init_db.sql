@@ -35,13 +35,13 @@ CREATE TABLE IF NOT EXISTS inventory (
 	CONSTRAINT positive_cards CHECK (quantity > 0)
 );
 
--- 2026-03-24
+-- 2026-03-23
 CREATE TABLE IF NOT EXISTS meta_data (
     meta_key VARCHAR(50) PRIMARY KEY,
     meta_value VARCHAR(100)
 );
 
--- 2026-03-25
+-- 2026-03-24
 CREATE TABLE IF NOT EXISTS trade_preferences (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
@@ -52,3 +52,7 @@ CREATE TABLE IF NOT EXISTS trade_preferences (
     FOREIGN KEY (user_id) REFERENCES users(id),
     UNIQUE KEY unique_user_pref (user_id, oracle_id, tag)
 );
+
+-- 2026-03-30
+ALTER TABLE ref_cards
+ADD image_data MEDIUMBLOB NOT NULL;
