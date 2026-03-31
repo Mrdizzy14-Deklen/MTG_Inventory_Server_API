@@ -33,8 +33,8 @@ def scryfall_sync():
     print(f"Syncing cards to database...")
     
     sql = """
-        INSERT INTO ref_cards (oracle_id, card_name, type_line, mana_cost, rarity, text_box, power, toughness, w, u, b, r, g)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO ref_cards (oracle_id, card_name, type_line, mana_cost, rarity, text_box, power, toughness, w, u, b, r, g, image_data)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE 
             card_name = VALUES(card_name),
             type_line = VALUES(type_line),
@@ -47,7 +47,8 @@ def scryfall_sync():
             u = VALUES(u),
             b = VALUES(b),
             r = VALUES(r),
-            g = VALUES(g)
+            g = VALUES(g),
+            image_data = VALUES(image_data)
     """
 
     count = 0
@@ -78,6 +79,8 @@ def scryfall_sync():
             r = 1 if 'R' in colors else 0
             g = 1 if 'G' in colors else 0
 
+            image_data = requests.get(card.get('image_uris', {}).get('large', '')).content
+
             # Trim card data
             card_data = (
                 card.get('oracle_id'),
@@ -88,7 +91,8 @@ def scryfall_sync():
                 card.get('oracle_text'),
                 card.get('power'),
                 card.get('toughness'),
-                w, u, b, r, g
+                w, u, b, r, g,
+                image_data
             )
 
             batch.append(card_data)
