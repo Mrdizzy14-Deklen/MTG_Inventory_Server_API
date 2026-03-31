@@ -84,14 +84,21 @@ def scryfall_sync():
             if not image_url and 'card_faces' in card:
                 image_url = card['card_faces'][0].get('image_uris', {}).get('large')
 
-            image_data = None
+            image_data = b''
             if image_url:
-                try:
-                    img_response = requests.get(image_url)
-                    if img_response.status_code == 200:
-                        image_data = img_response.content
-                except Exception as e:
-                    print(f"Failed to download image for {card.get('name')}: {e}")
+                for attempt in range(3):
+                    try:
+                        img_response = requests.get(image_url, timeout=10)
+                        if img_response.status_code == 200:
+                            image_data = img_response.content
+                            break
+                        else:
+                            print(f"Attempt {attempt+1}: Received status {img_response.status_code}")
+                    except Exception as e:
+                        if attempt < 2:
+                            time.sleep(1)
+                        else:
+                            print(f"Failed to download image for {card.get('name')} after 3 attempts: {e}")
 
             # Trim card data
             card_data = (
