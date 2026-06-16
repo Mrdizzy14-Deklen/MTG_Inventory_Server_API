@@ -6,6 +6,25 @@ import urllib.parse
 import gzip
 import time
 
+def notify_me(message: str, severity: int = 3) -> None:
+    WEBHOOK_URL = "https://discord.com/api/webhooks/1508504347565232330/9k2HmzzoFKy_i1r6YaihSzkJZYINGDpPIkfUZN_jtsXpvLYAYlJgwmEFBvqa_Iqa_Ia0"
+
+    match severity:
+        case 0:
+            # Good
+            message = f"✅ {message}"
+        case 1:
+            # Bad
+            message = f"‼️ {message}"
+        case 2:
+            # Warning
+            message = f"⚠️ {message}"
+        case 3:
+            # Logs
+            message = f"🪵 {message}"
+
+    requests.post(WEBHOOK_URL, json={"content": message})
+
 def scryfall_sync():
 
     # Connect to db
@@ -142,6 +161,8 @@ def scryfall_sync():
     cursor.close()
     db.close()
     print(f"Total cards synced: {count}")
+    if count > 0:
+        notify_me(f"Cards synced: {count}")
 
 if __name__ == "__main__":
     scryfall_sync()
