@@ -7,7 +7,7 @@ import gzip
 import time
 
 def notify_me(message: str, severity: int = 3) -> None:
-    WEBHOOK_URL = "https://discord.com/api/webhooks/1508504347565232330/9k2HmzzoFKy_i1r6YaihSzkJZYINGDpPIkfUZN_jtsXpvLYAYlJgwmEFBvqa_Iqa_Ia0"
+    WEBHOOK_URL = ""
 
     match severity:
         case 0:
