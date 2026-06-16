@@ -107,19 +107,18 @@ def register_user(user: UserCreateRequest, request: Request):
     hashed_pass = get_password_hash(user.password)
     
     db = get_db()
-    cursor = db.cursor()
-    try:
-        sql = "INSERT INTO users (username, password_hash) VALUES (%s, %s)"
-        cursor.execute(sql, (user.username, hashed_pass))
-        db.commit()
-        return {"status": "success", "message": f"User {user.username} created."}
-    except mysql.connector.Error as err:
-        if err.errno == 1062: # Duplicate entry error
-            raise HTTPException(status_code=400, detail="Username already taken.")
-        raise HTTPException(status_code=500, detail="Database error.")
-    finally:
-        cursor.close()
-        db.close()
+    with db.cursor(dictionary=True) as cursor:
+        try:
+            sql = "INSERT INTO users (username, password_hash) VALUES (%s, %s)"
+            cursor.execute(sql, (user.username, hashed_pass))
+            db.commit()
+            return {"status": "success", "message": f"User {user.username} created."}
+        except mysql.connector.Error as err:
+            if err.errno == 1062: # Duplicate entry error
+                raise HTTPException(status_code=400, detail="Username already taken.")
+            raise HTTPException(status_code=500, detail="Database error.")
+        finally:
+            db.close()
 
 class UserLoginRequest(BaseModel):
     username: str
@@ -131,7 +130,7 @@ def login_user(request: UserLoginRequest):
     user = get_user(request.username)
 
     if not user:
-        raise HTTPException(status_code=404, detail="User not found.")
+        raise HTTPException(status_code=400, detail="User not found.")
 
     if not verify_password(request.password, user['password_hash']):
         raise HTTPException(status_code=400, detail="Invalid password.")
@@ -149,6 +148,10 @@ def add_card(request: SingleCardRequest, user_id: int = Depends(get_current_user
     db = get_db()
     with db.cursor(dictionary=True) as cursor:
         try:
+
+            if request.quantity < 1:
+                raise HTTPException(status_code=400, detail="Quantity must be at least 1.")
+
             # Find card in reference table
             query_ref = "SELECT * FROM ref_cards WHERE card_name = %s LIMIT 1"
             cursor.execute(query_ref, (request.text,))
@@ -156,7 +159,7 @@ def add_card(request: SingleCardRequest, user_id: int = Depends(get_current_user
 
             if not ref_entry:
                 # Card not found
-                raise HTTPException(status_code=404, detail=f"Card '{request.text}' not found.")
+                raise HTTPException(status_code=400, detail=f"Card '{request.text}' not found.")
             
             oracle_id = ref_entry['oracle_id']
 
@@ -242,49 +245,47 @@ def move_card(request: MoveCardRequest, user_id: int = Depends(get_current_user)
 @app.post("/remove/card")
 def remove_card(request: SingleCardRequest, user_id: int = Depends(get_current_user)):
     db = get_db()
-    cursor = db.cursor(dictionary=True)
+    with db.cursor(dictionary=True) as cursor:
+        try:
+            # Get current quantity
+            query = """
+                SELECT i.oracle_id, i.quantity 
+                FROM inventory i
+                JOIN ref_cards r ON i.oracle_id = r.oracle_id
+                WHERE r.card_name = %s AND i.user_id = %s
+            """
+            cursor.execute(query, (request.text, user_id))
+            item = cursor.fetchone()
 
-    try:
-        # Get current quantity
-        query = """
-            SELECT i.oracle_id, i.quantity 
-            FROM inventory i
-            JOIN ref_cards r ON i.oracle_id = r.oracle_id
-            WHERE r.card_name = %s AND i.user_id = %s
-        """
-        cursor.execute(query, (request.text, user_id))
-        item = cursor.fetchone()
+            if not item:
+                raise HTTPException(status_code=404, detail="Card not found in your inventory.")
 
-        if not item:
-            raise HTTPException(status_code=404, detail="Card not found in your inventory.")
+            current_qty = item['quantity']
+            oracle_id = item['oracle_id']
 
-        current_qty = item['quantity']
-        oracle_id = item['oracle_id']
+            # Check if need to remove row
+            if current_qty <= request.quantity:
+                cursor.execute(
+                    "DELETE FROM inventory WHERE user_id = %s AND oracle_id = %s",
+                    (user_id, oracle_id)
+                )
+                message = f"Removed all copies of '{request.text}' from inventory."
+            else:
+                # Decrement
+                cursor.execute(
+                    "UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s",
+                    (request.quantity, user_id, oracle_id)
+                )
+                message = f"Removed {request.quantity}x '{request.text}'. New total: {current_qty - request.quantity}."
 
-        # Check if need to remove row
-        if current_qty <= request.quantity:
-            cursor.execute(
-                "DELETE FROM inventory WHERE user_id = %s AND oracle_id = %s",
-                (user_id, oracle_id)
-            )
-            message = f"Removed all copies of '{request.text}' from inventory."
-        else:
-            # Decrement
-            cursor.execute(
-                "UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s",
-                (request.quantity, user_id, oracle_id)
-            )
-            message = f"Removed {request.quantity}x '{request.text}'. New total: {current_qty - request.quantity}."
+            db.commit()
+            return {"status": "success", "message": message}
 
-        db.commit()
-        return {"status": "success", "message": message}
-
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Database update failed.")
-    finally:
-        cursor.close()
-        db.close()
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Database update failed.")
+        finally:
+            db.close()
 
 class CardRequest(BaseModel):
     name: str
@@ -298,25 +299,44 @@ class BulkCardRequest(BaseModel):
 def add_bulk(request: BulkCardRequest, user_id: int = Depends(get_current_user)):
     db = get_db()
     with db.cursor(dictionary=True) as cursor:
-        count = 0
-
         try:
+
+            card_quantities = {}
             for card in request.cards:
-                # Find the oracle_id
-                cursor.execute("SELECT oracle_id FROM ref_cards WHERE card_name = %s LIMIT 1", (card.name,))
-                ref = cursor.fetchone()
-                
-                if ref:
-                    sql = """
-                        INSERT INTO inventory (user_id, oracle_id, quantity) 
-                        VALUES (%s, %s, %s)
-                        ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
-                    """
-                    cursor.execute(sql, (user_id, ref['oracle_id'], card.quantity))
-                    count += 1
+                card_quantities[card.name] = card_quantities.get(card.name, 0) + card.quantity
             
+            card_names = list(card_quantities.keys())
+
+            if not card_names:
+                return {"status": "success", "message": "No cards provided."}
+
+            query = f"SELECT card_name, oracle_id FROM ref_cards WHERE card_name IN ({card_names})"
+            
+            cursor.execute(query, tuple(card_names))
+            
+            ref_map = {row['card_name']: row['oracle_id'] for row in cursor.fetchall()}
+
+            insert_data = []
+            total_cards_added = 0
+            
+            for name, qty in card_quantities.items():
+                if name in ref_map:
+                    insert_data.append((user_id, ref_map[name], qty))
+                    total_cards_added += qty
+
+            if not insert_data:
+                 return {"status": "success", "message": "No valid cards found to add."}
+
+            sql = """
+                INSERT INTO inventory (user_id, oracle_id, quantity) 
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
+            """
+            
+            cursor.executemany(sql, insert_data)
+
             db.commit()
-            return {"status": "success", "message": f"Added {count} cards."}
+            return {"status": "success", "message": f"Added {total_cards_added} cards."}
         except Exception as e:
             db.rollback()
             raise HTTPException(status_code=500, detail="Database update failed.")
