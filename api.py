@@ -4,6 +4,7 @@ import os
 from fastapi import FastAPI, HTTPException, Request, Security, Depends
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.security import OAuth2PasswordBearer
+from fastapi.responses import Response
 import mysql.connector
 from mysql.connector import pooling
 from pydantic import BaseModel, Field
@@ -15,6 +16,7 @@ from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta, UTC
 from bot_utilities import notify_me
+from typing import Optional
 
 # Load the API key from env var
 API_KEY = os.getenv("API_KEY")
@@ -361,7 +363,7 @@ def add_bulk(request: BulkCardRequest, user_id: int = Depends(get_current_user))
             return {"status": "success", "message": f"Added {total_cards_added} cards."}
         except Exception as e:
             db.rollback()
-            raise HTTPException(status_code=500, detail="Database update failed.")
+            raise e
         finally:
             db.close()
 
@@ -474,6 +476,98 @@ def view_inventory(user_id: int = Depends(get_current_user)):
     finally:
         cursor.close()
         db.close()
+
+
+class CardSearchRequest(BaseModel):
+    card_name: Optional[str] = None
+    type_line: Optional[str] = None
+    mana_cost: Optional[int] = None
+    rarity: Optional[str] = None
+    text_box: Optional[str] = None
+    power: Optional[str] = None
+    toughness: Optional[str] = None
+    w: Optional[bool] = None
+    u: Optional[bool] = None
+    b: Optional[bool] = None
+    r: Optional[bool] = None
+    g: Optional[bool] = None
+    owned: Optional[bool] = False
+
+# Updated route name to reflect global search
+@app.post("/search/cards")
+def search_cards(request: CardSearchRequest, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    with db.cursor(dictionary=True) as cursor:
+        try:
+            # We select from ref_cards, and LEFT JOIN the specific user's inventory
+            # COALESCE turns NULL quantities (unowned cards) into 0
+            query = """
+                SELECT 
+                    r.oracle_id, r.card_name, r.type_line, r.mana_cost, 
+                    r.rarity, r.text_box, r.power, r.toughness, 
+                    r.w, r.u, r.b, r.r, r.g, 
+                    COALESCE(i.quantity, 0) as quantity 
+                FROM ref_cards r
+                LEFT JOIN inventory i ON r.oracle_id = i.oracle_id AND i.user_id = %s
+                WHERE 1=1
+            """
+            params = [user_id]
+
+            # --- The Owned Filter ---
+            if request.owned:
+                query += " AND i.quantity > 0"
+
+            # --- Fuzzy Searches (LIKE) ---
+            if request.card_name:
+                query += " AND r.card_name LIKE %s"
+                params.append(f"%{request.card_name}%")
+            if request.type_line:
+                query += " AND r.type_line LIKE %s"
+                params.append(f"%{request.type_line}%")
+            if request.text_box:
+                query += " AND r.text_box LIKE %s"
+                params.append(f"%{request.text_box}%")
+
+            # --- Exact Matches ---
+            if request.mana_cost is not None:
+                query += " AND r.mana_cost = %s"
+                params.append(request.mana_cost)
+            if request.rarity:
+                query += " AND r.rarity = %s"
+                params.append(request.rarity)
+            if request.power:
+                query += " AND r.power = %s"
+                params.append(request.power)
+            if request.toughness:
+                query += " AND r.toughness = %s"
+                params.append(request.toughness)
+
+            # --- Color Identity (Booleans) ---
+            if request.w is not None:
+                query += " AND r.w = %s"
+                params.append(request.w)
+            if request.u is not None:
+                query += " AND r.u = %s"
+                params.append(request.u)
+            if request.b is not None:
+                query += " AND r.b = %s"
+                params.append(request.b)
+            if request.r is not None:
+                query += " AND r.r = %s"
+                params.append(request.r)
+            if request.g is not None:
+                query += " AND r.g = %s"
+                params.append(request.g)
+
+            cursor.execute(query, tuple(params))
+            results = cursor.fetchall()
+
+            return {"status": "success", "cards": results}
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
+        finally:
+            db.close()
 
 class TradePreferenceRequest(BaseModel):
     oracle_id: str = None   # Specific card
