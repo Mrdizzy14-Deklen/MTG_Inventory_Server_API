@@ -327,6 +327,14 @@ def add_bulk(request: BulkCardRequest, user_id: int = Depends(get_current_user))
             
             ref_map = {row['card_name']: row['oracle_id'] for row in cursor.fetchall()}
 
+            missing_cards = [name for name in card_names if name not in ref_map]
+
+            if missing_cards:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Import aborted. Cards not found in database: {', '.join(missing_cards)}"
+                )
+
             insert_data = []
             total_cards_added = 0
             
