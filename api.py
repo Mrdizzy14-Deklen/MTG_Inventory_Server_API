@@ -319,7 +319,9 @@ def add_bulk(request: BulkCardRequest, user_id: int = Depends(get_current_user))
             if not card_names:
                 return {"status": "success", "message": "No cards provided."}
 
-            query = f"SELECT card_name, oracle_id FROM ref_cards WHERE card_name IN ({card_names})"
+            placeholders = ', '.join(['%s'] * len(card_names))
+            
+            query = f"SELECT card_name, oracle_id FROM ref_cards WHERE card_name IN ({placeholders})"
             
             cursor.execute(query, tuple(card_names))
             
