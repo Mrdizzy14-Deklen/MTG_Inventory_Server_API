@@ -14,6 +14,7 @@ from slowapi.errors import RateLimitExceeded
 from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta, UTC
+from bot_utilities import notify_me
 
 # Load the API key from env var
 API_KEY = os.getenv("API_KEY")
@@ -112,6 +113,7 @@ def register_user(user: UserCreateRequest, request: Request):
             sql = "INSERT INTO users (username, password_hash) VALUES (%s, %s)"
             cursor.execute(sql, (user.username, hashed_pass))
             db.commit()
+            notify_me(f"New user registered: {user.username}", severity=0)
             return {"status": "success", "message": f"User {user.username} created."}
         except mysql.connector.Error as err:
             if err.errno == 1062: # Duplicate entry error
@@ -136,6 +138,7 @@ def login_user(request: UserLoginRequest):
         raise HTTPException(status_code=400, detail="Invalid password.")
     
     token = create_access_token(data={"user_id": user['id']})
+    notify_me(f"User logged in: {request.username}")
     return {"access_token": token, "token_type": "bearer", "user_id": user['id']}
 
 class SingleCardRequest(BaseModel):
@@ -180,6 +183,8 @@ def add_card(request: SingleCardRequest, user_id: int = Depends(get_current_user
             ))
 
             db.commit()
+
+            notify_me(f"User {user_id} added {request.quantity}x '{request.text}' to inventory.")
 
             return {
                 "status": "success",
@@ -233,6 +238,7 @@ def move_card(request: MoveCardRequest, user_id: int = Depends(get_current_user)
             cursor.execute(sql_to, (get_user(request.to_username)['id'], oracle_id, request.quantity))
 
             db.commit()
+            notify_me(f"User {user_id} moved {request.quantity}x '{request.text}' to {request.to_username}.")
             return {"status": "success", "message": f"Moved {request.quantity}x '{request.text}' to {request.to_username}."}
 
         except Exception as e:
@@ -279,6 +285,9 @@ def remove_card(request: SingleCardRequest, user_id: int = Depends(get_current_u
                 message = f"Removed {request.quantity}x '{request.text}'. New total: {current_qty - request.quantity}."
 
             db.commit()
+
+            notify_me(f"User {user_id} removed {request.quantity}x '{request.text}' from inventory.")
+
             return {"status": "success", "message": message}
 
         except Exception as e:
@@ -336,6 +345,9 @@ def add_bulk(request: BulkCardRequest, user_id: int = Depends(get_current_user))
             cursor.executemany(sql, insert_data)
 
             db.commit()
+
+            notify_me(f"User {user_id} added {total_cards_added} cards in bulk.")
+
             return {"status": "success", "message": f"Added {total_cards_added} cards."}
         except Exception as e:
             db.rollback()
@@ -384,6 +396,9 @@ def move_bulk(request: MoveBulkCardRequest, user_id: int = Depends(get_current_u
                     count += 1
 
             db.commit()
+
+            notify_me(f"User {user_id} moved {count} cards in bulk to {request.to_username}.")
+
             return {"status": "success", "message": f"Moved {count} cards."}
         except Exception as e:
             db.rollback()
@@ -419,6 +434,9 @@ def remove_bulk(request: BulkCardRequest, user_id: int = Depends(get_current_use
                 removed_count += 1
 
         db.commit()
+        
+        notify_me(f"User {user_id} removed {removed_count} cards in bulk.")
+
         return {"status": "success", "message": f"Removed {removed_count} cards."}
     except Exception as e:
         db.rollback()
