@@ -23,3 +23,7 @@ def notify_me(message: str, severity: int = 3) -> None:
             message = f"🪵 {message}"
     
     requests.post(WEBHOOK_URL, json={"content": message})
+
+def print_notify(message: str, severity: int = 3) -> None:
+    print(message)
+    notify_me(message, severity)

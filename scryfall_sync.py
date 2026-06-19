@@ -9,12 +9,18 @@ import ijson
 import mysql.connector
 import urllib.parse
 
-from bot_utilities import notify_me
+from bot_utilities import print_notify
 
 IMAGE_DIR = "images/"
 os.makedirs(IMAGE_DIR, exist_ok=True)
 
+HEADERS = {
+    'User-Agent': 'MTG-Inventory/1.0',
+    'Accept': 'application/json;q=0.9,*/*;q=0.8'
+    }
+
 def scryfall_sync():
+    
     # Connect to db
     db = mysql.connector.connect(
         host="localhost",
@@ -56,19 +62,18 @@ def scryfall_sync():
     """
 
     count = 0
-    headers = {
-        'User-Agent': 'MTG-Inventory/1.0',
-        'Accept': 'application/json;q=0.9,*/*;q=0.8'
-    }
+    
 
     while next_page_url:
-        print(f"Fetching: {next_page_url}")
-        bulk = requests.get(next_page_url, stream=True, headers=headers)
 
+        print(f"Fetching: {next_page_url}")
+
+        bulk = requests.get(next_page_url, stream=True, headers=HEADERS)
         if bulk.headers.get('Content-Encoding') == 'gzip':
             stream = gzip.GzipFile(fileobj=bulk.raw)
         else:
             stream = bulk.raw
+        
         next_page_url = None
 
         # Batch upload cards
@@ -76,6 +81,7 @@ def scryfall_sync():
         batch = []
 
         for card in cards_generator:
+
             oracle_id = card.get('oracle_id')
             if not oracle_id:
                 continue
@@ -91,6 +97,7 @@ def scryfall_sync():
             image_path = os.path.join(IMAGE_DIR, f"{oracle_id}.jpg")
 
             if not os.path.exists(image_path):
+
                 image_url = card.get('image_uris', {}).get('large')
                 
                 if not image_url and 'card_faces' in card:
@@ -99,14 +106,19 @@ def scryfall_sync():
                 if image_url:
                     for attempt in range(3):
                         try:
-                            img_response = requests.get(image_url, headers=headers, timeout=10)
+
+                            img_response = requests.get(image_url, headers=HEADERS, timeout=10)
                             if img_response.status_code == 200:
                                 with open(image_path, 'wb') as f:
                                     f.write(img_response.content)
+
                                 break
+
                             else:
                                 print(f"Attempt {attempt + 1}: Received status {img_response.status_code}")
+                        
                         except Exception as e:
+
                             if attempt < 2:
                                 time.sleep(1)
                             else:
@@ -134,26 +146,34 @@ def scryfall_sync():
                 batch = []
 
         if batch:
+
             cursor.executemany(sql, batch)
             db.commit()
+
             count += len(batch)
         
-        meta_resp = requests.get(bulk.url, headers=headers).json() 
+        meta_resp = requests.get(bulk.url, headers=HEADERS).json() 
         next_page_url = meta_resp.get('next_page') if meta_resp.get('has_more') else None
+
         time.sleep(0.1)
 
     # Update last sync date
-    cursor.execute("""
-                   INSERT INTO meta_data (meta_key, meta_value) 
-                   VALUES ('last_scryfall_sync', %s) 
-                   ON DUPLICATE KEY UPDATE meta_value = VALUES(meta_value)""", (today,))
+    cursor.execute(
+        """
+        INSERT INTO meta_data (meta_key, meta_value) 
+        VALUES ('last_scryfall_sync', %s) 
+        ON DUPLICATE KEY UPDATE meta_value = VALUES(meta_value)
+        """, 
+        (today,)
+    )
+
     db.commit()
+
     cursor.close()
     db.close()
-    
-    print(f"Total cards synced: {count}")
+
     if count > 0:
-        notify_me(f"Cards synced: {count}")
+        print_notify(f"Cards synced: {count}")
 
 if __name__ == "__main__":
     scryfall_sync()
