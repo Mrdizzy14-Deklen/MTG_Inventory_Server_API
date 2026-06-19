@@ -66,6 +66,14 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
     credentials: 'include',
   });
 
+  if (response.status === 401) {
+    Cookies.remove('authToken');
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
+    throw new Error('Session expired: 401 Unauthorized');
+  }
+
   if (!response.ok) {
     let errorMessage = `API error: ${response.status} ${response.statusText}`;
     try {
