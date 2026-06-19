@@ -25,6 +25,7 @@ export default function Page() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
   const [sortBy, setSortBy] = useState('name');
+  const [sortOrder, setSortOrder] = useState('asc');
 
   const sortedCards = useMemo(() => {
     const cardsCopy = [...cards];
@@ -32,29 +33,52 @@ export default function Page() {
       const nameA = a.card_name || a.name || '';
       const nameB = b.card_name || b.name || '';
 
+      let result = 0;
+
       if (sortBy === 'cmc') {
         const cmcA = a.mana_cost || 0;
         const cmcB = b.mana_cost || 0;
-        if (cmcA !== cmcB) return cmcA - cmcB;
-        return nameA.localeCompare(nameB);
+        if (cmcA !== cmcB) {
+          result = cmcA - cmcB;
+        } else {
+          result = nameA.localeCompare(nameB);
+        }
+      }else if (sortBy === 'color') {
+        const getColorData = (card: any) => {
+          const w = card.w ? 1 : 0;
+          const u = card.u ? 1 : 0;
+          const b = card.b ? 1 : 0;
+          const r = card.r ? 1 : 0;
+          const g = card.g ? 1 : 0;
+
+          const colorCount = w + u + b + r + g;
+          
+          const group = colorCount === 0 ? 6 : colorCount;
+          
+          const binaryScore = (w * 16) + (u * 8) + (b * 4) + (r * 2) + (g * 1);
+          
+          return { group, binaryScore };
+        };
+
+        const dataA = getColorData(a);
+        const dataB = getColorData(b);
+
+        if (dataA.group !== dataB.group) {
+          result = dataA.group - dataB.group;
+        } else if (dataA.binaryScore !== dataB.binaryScore) {
+          result = dataB.binaryScore - dataA.binaryScore;
+        } else {
+          result = nameA.localeCompare(nameB);
+        }
+      }else{
+        result = nameA.localeCompare(nameB);
       }
 
-      if (sortBy === 'color') {
-        const getScore = (card: any) => 
-          (card.w ? 16 : 0) + (card.u ? 8 : 0) + (card.b ? 4 : 0) + (card.r ? 2 : 0) + (card.g ? 1 : 0);
-        
-        const scoreA = getScore(a);
-        const scoreB = getScore(b);
-        
-        if (scoreA !== scoreB) return scoreB - scoreA;
-        return nameA.localeCompare(nameB);
-      }
-
-      return nameA.localeCompare(nameB);
+      return sortOrder === 'desc' ? result * -1 : result;
     });
     
     return cardsCopy;
-  }, [cards, sortBy]);
+  }, [cards, sortBy, sortOrder]);
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -250,6 +274,15 @@ export default function Page() {
                 <option value="name">Name</option>
                 <option value="color">Color</option>
                 <option value="cmc">CMC</option>
+              </select>
+              <select
+                id="sort-order"
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value)}
+                className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
               </select>
             </div>
           </div>
