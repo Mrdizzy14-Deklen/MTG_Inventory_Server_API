@@ -144,7 +144,7 @@ class UserCreateRequest(BaseModel):
 
 # Register a user account
 @app.post("/users/register")
-@limiter.limit("1/hour")
+@limiter.limit("5/hour")
 def register_user(user: UserCreateRequest, request: Request, background_tasks: BackgroundTasks):
     
     if user.username.strip().lower() in ["admin", "root", "system", "api"]:
