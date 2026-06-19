@@ -13,13 +13,16 @@ export interface SearchFilters {
   colorMatch: string;
   commanderIdentity: string[];
   type: string;
-  cmc: string;
   rarity: string[];
   text: string;
-  power: string;
-  toughness: string;
   quantityOperator: string;
-  quantityValue: string;
+  quantity: string;
+  cmcOperator: string;
+  cmc: string;
+  powerOperator: string;
+  power: string;
+  toughnessOperator: string;
+  toughness: string;
 }
 
 interface SearchSidebarProps {
@@ -37,13 +40,16 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
     colorMatch: 'exact',
     commanderIdentity: [],
     type: '',
-    cmc: '',
     rarity: [],
     text: '',
-    power: '',
-    toughness: '',
     quantityOperator: '>=',
-    quantityValue: '',
+    quantity: '',
+    cmcOperator: '=',
+    cmc: '',
+    powerOperator: '=',
+    power: '',
+    toughnessOperator: '=',
+    toughness: '',
   });
 
   const toggleColor = (color: string) => {
@@ -81,7 +87,7 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
 
         {/* Quantity Owned */}
         <div className="space-y-2">
-          <Label htmlFor="quantityValue" className="text-sm font-semibold">
+          <Label htmlFor="quantity" className="text-sm font-semibold">
             Quantity Owned
           </Label>
           <div className="flex gap-2">
@@ -97,15 +103,15 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
               <option value="<">&lt;</option>
             </select>
             <Input
-              id="quantityValue"
+              id="quantity"
               type="number"
               min="0"
               placeholder="Amount"
-              value={filters.quantityValue}
+              value={filters.quantity}
               onChange={(e) => {
                 const val = e.target.value;
                 if (val !== '' && parseInt(val) < 0) return;
-                setFilters(prev => ({ ...prev, quantityValue: val }));
+                setFilters(prev => ({ ...prev, quantity: val }));
               }}
               className="bg-background border-border text-foreground flex-1"
             />
@@ -128,15 +134,15 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
                 </Label>
               </div>
             ))}
-          <select
-            className="mt-2 flex w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            value={filters.colorMatch}
-            onChange={(e) => setFilters(prev => ({ ...prev, colorMatch: e.target.value }))}
-          >
-            <option value="including">Including these colors</option>
-            <option value="exact">Exactly these colors</option>
-          </select>
-        </div>
+            <select
+              className="mt-2 flex w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={filters.colorMatch}
+              onChange={(e) => setFilters(prev => ({ ...prev, colorMatch: e.target.value }))}
+            >
+              <option value="including">Including these colors</option>
+              <option value="exact">Exactly these colors</option>
+            </select>
+          </div>
         </div>
 
         {/* Commander Identity */}
@@ -173,15 +179,32 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
         {/* CMC */}
         <div className="space-y-2">
           <Label htmlFor="cmc" className="text-sm font-semibold">CMC</Label>
-          <Input
-            id="cmc"
-            type="number"
-            min="0"
-            placeholder="0"
-            value={filters.cmc}
-            onChange={(e) => setFilters((prev) => ({ ...prev, cmc: e.target.value }))}
-            className="bg-background border-border text-foreground"
-          />
+          <div className="flex gap-2">
+            <select
+              className="flex h-9 w-16 rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={filters.cmcOperator}
+              onChange={(e) => setFilters(prev => ({ ...prev, cmcOperator: e.target.value }))}
+            >
+              <option value="=">=</option>
+              <option value=">=">&ge;</option>
+              <option value=">">&gt;</option>
+              <option value="<=">&le;</option>
+              <option value="<">&lt;</option>
+            </select>
+            <Input
+              id="cmc"
+              type="number"
+              min="0"
+              placeholder="0"
+              value={filters.cmc}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val !== '' && parseInt(val) < 0) return;
+                setFilters(prev => ({ ...prev, cmc: val }));
+              }}
+              className="bg-background border-border text-foreground flex-1"
+            />
+          </div>
         </div>
 
         {/* Rarity */}
@@ -225,29 +248,53 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
         {/* Power */}
         <div className="space-y-2">
           <Label htmlFor="power" className="text-sm font-semibold">Power</Label>
-          <Input
-            id="power"
-            type="number"
-            min="0"
-            placeholder="0"
-            value={filters.power}
-            onChange={(e) => setFilters((prev) => ({ ...prev, power: e.target.value }))}
-            className="bg-background border-border text-foreground"
-          />
+          <div className="flex gap-2">
+            <select
+              className="flex h-9 w-16 rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={filters.powerOperator}
+              onChange={(e) => setFilters(prev => ({ ...prev, powerOperator: e.target.value }))}
+            >
+              <option value="=">=</option>
+              <option value=">=">&ge;</option>
+              <option value=">">&gt;</option>
+              <option value="<=">&le;</option>
+              <option value="<">&lt;</option>
+            </select>
+            <Input
+              id="power"
+              type="number"
+              placeholder="0"
+              value={filters.power}
+              onChange={(e) => setFilters(prev => ({ ...prev, power: e.target.value }))}
+              className="bg-background border-border text-foreground flex-1"
+            />
+          </div>
         </div>
 
         {/* Toughness */}
         <div className="space-y-2">
           <Label htmlFor="toughness" className="text-sm font-semibold">Toughness</Label>
-          <Input
-            id="toughness"
-            type="number"
-            min="0"
-            placeholder="0"
-            value={filters.toughness}
-            onChange={(e) => setFilters((prev) => ({ ...prev, toughness: e.target.value }))}
-            className="bg-background border-border text-foreground"
-          />
+          <div className="flex gap-2">
+            <select
+              className="flex h-9 w-16 rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={filters.toughnessOperator}
+              onChange={(e) => setFilters(prev => ({ ...prev, toughnessOperator: e.target.value }))}
+            >
+              <option value="=">=</option>
+              <option value=">=">&ge;</option>
+              <option value=">">&gt;</option>
+              <option value="<=">&le;</option>
+              <option value="<">&lt;</option>
+            </select>
+            <Input
+              id="toughness"
+              type="number"
+              placeholder="0"
+              value={filters.toughness}
+              onChange={(e) => setFilters(prev => ({ ...prev, toughness: e.target.value }))}
+              className="bg-background border-border text-foreground flex-1"
+            />
+          </div>
         </div>
       </div>
     </aside>

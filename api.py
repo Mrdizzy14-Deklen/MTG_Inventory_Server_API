@@ -942,12 +942,15 @@ class CardSearchRequest(BaseModel):
     g: Optional[bool] = None
     commander_identity: Optional[List[str]] = None
     mana_cost: Optional[int] = None
+    mana_cost_operator: Optional[str] = None
     power: Optional[str] = None
+    power_operator: Optional[str] = None
     toughness: Optional[str] = None
+    toughness_operator: Optional[str] = None
     rarity: Optional[str] = None
     owned: Optional[bool] = False
-    quantity_operator: Optional[str] = None
     quantity_value: Optional[int] = None
+    quantity_operator: Optional[str] = None
 
 # Search's the db with given params
 @api_router.post("/search_cards")
@@ -1002,25 +1005,23 @@ def search_cards(request: CardSearchRequest, user_id: int = Depends(JWT_get_user
 
             # Exact search params
 
-            if request.mana_cost is not None:
-                query += " AND r.mana_cost = %s"
-                params.append(request.mana_cost)
+            valid_ops = ['>', '>=', '<', '<=', '=']
 
-            if request.rarity:
-                query += " AND r.rarity = %s"
-                params.append(request.rarity)
-
-            if request.power:
-                query += " AND r.power = %s"
-                params.append(request.power)
-
-            if request.toughness:
-                query += " AND r.toughness = %s"
-                params.append(request.toughness)
-
-            if request.quantity_value is not None and request.quantity_operator in ['>', '>=', '<', '<=', '=']:
+            if request.quantity_value is not None and request.quantity_operator in valid_ops:
                 query += f" AND COALESCE(i.quantity, 0) {request.quantity_operator} %s"
                 params.append(request.quantity_value)
+
+            if request.mana_cost is not None and request.mana_cost_operator in valid_ops:
+                query += f" AND r.mana_cost {request.mana_cost_operator} %s"
+                params.append(request.mana_cost)
+
+            if request.power is not None and request.power_operator in valid_ops:
+                query += f" AND CAST(r.power AS SIGNED) {request.power_operator} %s"
+                params.append(request.power)
+
+            if request.toughness is not None and request.toughness_operator in valid_ops:
+                query += f" AND CAST(r.toughness AS SIGNED) {request.toughness_operator} %s"
+                params.append(request.toughness)
 
             # Color identity
 

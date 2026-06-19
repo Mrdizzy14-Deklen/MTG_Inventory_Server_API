@@ -43,7 +43,7 @@ export default function Page() {
         } else {
           result = nameA.localeCompare(nameB);
         }
-      }else if (sortBy === 'color') {
+      } else if (sortBy === 'color') {
         const getColorData = (card: any) => {
           const w = card.w ? 1 : 0;
           const u = card.u ? 1 : 0;
@@ -70,7 +70,7 @@ export default function Page() {
         } else {
           result = nameA.localeCompare(nameB);
         }
-      }else{
+      } else {
         result = nameA.localeCompare(nameB);
       }
 
@@ -113,7 +113,15 @@ export default function Page() {
   }, [router]);
 
   const emptySidebarFilters: SidebarFilters = {
-    colors: [], colorMatch: 'exact', commanderIdentity: [], type: '', cmc: '', rarity: [], text: '', power: '', toughness: '', quantityOperator: '>=', quantityValue: ''
+    colors: [], colorMatch: 'exact', 
+    commanderIdentity: [], 
+    type: '', 
+    cmc: '', cmcOperator: '=',
+    rarity: [], 
+    text: '', 
+    power: '', powerOperator: '=',
+    toughness: '', toughnessOperator: '=',
+    quantity: '', quantityOperator: '>='
   };
 
   const handleSearch = async (sidebarFilters: SidebarFilters = emptySidebarFilters) => {
@@ -123,8 +131,8 @@ export default function Page() {
 
       let currentShowUnowned = showUnowned;
 
-      if (sidebarFilters.quantityValue !== '') {
-        const qVal = parseInt(sidebarFilters.quantityValue, 10);
+      if (sidebarFilters.quantity !== '') {
+        const qVal = parseInt(sidebarFilters.quantity, 10);
         const qOp = sidebarFilters.quantityOperator;
         
         if ((qOp === '>' && qVal >= 0) || (qOp === '>=' && qVal >= 1) || (qOp === '=' && qVal >= 1)) {
@@ -134,6 +142,19 @@ export default function Page() {
 
         apiFilters.quantity_operator = qOp;
         apiFilters.quantity_value = qVal;
+      }
+
+      if (sidebarFilters.cmc !== '') {
+        apiFilters.cmc_operator = sidebarFilters.cmcOperator;
+        apiFilters.cmc = parseInt(sidebarFilters.cmc, 10);
+      }
+      if (sidebarFilters.power !== '') {
+        apiFilters.power_operator = sidebarFilters.powerOperator;
+        apiFilters.power = parseInt(sidebarFilters.power, 10);
+      }
+      if (sidebarFilters.toughness !== '') {
+        apiFilters.toughness_operator = sidebarFilters.toughnessOperator;
+        apiFilters.toughness = parseInt(sidebarFilters.toughness, 10);
       }
 
       const colorMap: Record<string, string> = {
@@ -146,6 +167,9 @@ export default function Page() {
       };
 
       if (cardName) apiFilters.card_name = cardName;
+      if (sidebarFilters.type) apiFilters.type_line = sidebarFilters.type;
+      if (sidebarFilters.rarity && sidebarFilters.rarity.length > 0) apiFilters.rarity = sidebarFilters.rarity[0];
+      if (sidebarFilters.text) apiFilters.text_box = sidebarFilters.text;
 
       if (sidebarFilters.colors && sidebarFilters.colors.length > 0) {
         const mappedColors = sidebarFilters.colors.map(c => colorMap[c]);
@@ -164,24 +188,7 @@ export default function Page() {
       if (sidebarFilters.commanderIdentity && sidebarFilters.commanderIdentity.length > 0) {
         apiFilters.commander_identity = sidebarFilters.commanderIdentity.map(c => colorMap[c]);
       }
-
-      if (sidebarFilters.type) apiFilters.type_line = sidebarFilters.type;
       
-      if (sidebarFilters.cmc) {
-        const parsedCmc = parseInt(sidebarFilters.cmc);
-        if (!isNaN(parsedCmc)) {
-          apiFilters.mana_cost = parsedCmc;
-        }
-      }
-
-      if (sidebarFilters.rarity && sidebarFilters.rarity.length > 0) {
-        apiFilters.rarity = sidebarFilters.rarity[0];
-      }
-      
-      if (sidebarFilters.text) apiFilters.text_box = sidebarFilters.text;
-      if (sidebarFilters.power) apiFilters.power = sidebarFilters.power;
-      if (sidebarFilters.toughness) apiFilters.toughness = sidebarFilters.toughness;
-
       if (!currentShowUnowned) apiFilters.owned = true;
 
       const results = await fetchCards(apiFilters);
@@ -204,7 +211,6 @@ export default function Page() {
 
   const handleUpdatePreference = async (oracleId: string, preference: string, title: string, notes: string) => {
     try {
-
       const enumMap: Record<string, string> = {
         'For Trade': 'for_trade',
         'Looking For': 'looking_for',
