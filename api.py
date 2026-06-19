@@ -634,6 +634,24 @@ def remove_trade_preference(request: TradePreferenceRequest, user_id: int = Depe
         finally:
             db.close()
 
+@api_router.get("/trade/preferences")
+def get_trade_preferences(user_id: int = Depends(get_current_user)):
+    db = get_db()
+    with db.cursor(dictionary=True) as cursor:
+        try:
+            sql = """
+                SELECT oracle_id, tag, trade_status as status, notes 
+                FROM trade_preferences 
+                WHERE user_id = %s
+            """
+            cursor.execute(sql, (user_id,))
+            preferences = cursor.fetchall()
+            return {"status": "success", "preferences": preferences}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail="Failed to fetch preferences.")
+        finally:
+            db.close()
+
 app.include_router(api_router)
 
 # --- Public Routes ---
@@ -723,11 +741,10 @@ def verify_account(token: str):
             
             notify_me(f"User verified: {pending_user['username']}", severity=0)
             
-            # 4. Return an HTML page that automatically redirects to the React app
             return f"""
             <html>
                 <head>
-                    <meta http-equiv="refresh" content="3;url=https://vm.deklenn.dev/login" />
+                    <meta http-equiv="refresh" content="3;url=https://mtg.deklenn.dev" />
                 </head>
                 <body style="background-color: #09090b; color: white; font-family: sans-serif; text-align: center; padding-top: 50px;">
                     <h2>Account Verified!</h2>

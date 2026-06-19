@@ -119,6 +119,18 @@ export async function removePreference(preference: {
   });
 }
 
+export async function fetchPreferences(): Promise<any[]> {
+  try {
+    const data = await fetchWithAuth('/trade/preferences', {
+      method: 'GET',
+    });
+    
+    return Array.isArray(data) ? data : (data.preferences || []);
+  } catch (error) {
+    console.error('Failed to fetch preferences:', error);
+    return [];
+  }
+}
 
 export interface BulkCardInput {
   name: string;

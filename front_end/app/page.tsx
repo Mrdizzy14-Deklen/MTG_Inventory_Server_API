@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { SearchSidebar, SearchFilters as SidebarFilters } from '@/components/SearchSidebar';
 import { CardGrid } from '@/components/CardGrid';
 import { CardDetailModal } from '@/components/CardDetailModal';
-import { fetchInventory, fetchCards, updatePreference, removePreference, Card } from '@/lib/mtg-client';
+import { fetchInventory, fetchCards, updatePreference, removePreference, fetchPreferences, Card } from '@/lib/mtg-client';
 import { useRouter } from 'next/navigation';
 
 export default function Page() {
@@ -18,6 +18,7 @@ export default function Page() {
   
   const [cards, setCards] = useState<Card[]>([]);
   const [cardName, setCardName] = useState('');
+  const [preferences, setPreferences] = useState<Record<string, any>>({});
   const [showUnowned, setShowUnowned] = useState(false);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -25,12 +26,25 @@ export default function Page() {
   const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
-    const loadInventory = async () => {
+    const loadInitialData = async () => {
       try {
-        const inventory = await fetchInventory();
+        const [inventory, userPrefs] = await Promise.all([
+          fetchInventory(),
+          fetchPreferences()
+        ]);
+        
         setCards(inventory);
+
+        const prefMap: Record<string, any> = {};
+        if (userPrefs && Array.isArray(userPrefs)) {
+          userPrefs.forEach((pref: any) => {
+            prefMap[pref.oracle_id] = pref;
+          });
+        }
+        setPreferences(prefMap);
+
       } catch (error: any) {
-        console.error('Failed to load inventory:', error);
+        console.error('Failed to load data:', error);
         if (error.message && error.message.includes('401')) {
           Cookies.remove('authToken');
           router.push('/login');
@@ -40,7 +54,7 @@ export default function Page() {
       }
     };
 
-    loadInventory();
+    loadInitialData();
   }, [router]);
 
   const emptySidebarFilters: SidebarFilters = {
@@ -180,6 +194,7 @@ export default function Page() {
         <div className="flex-1 overflow-y-auto p-6">
           <CardGrid
             cards={cards}
+            preferences={preferences}
             showUnowned={showUnowned}
             onCardClick={handleCardClick}
             isLoading={isLoading || isSearching}

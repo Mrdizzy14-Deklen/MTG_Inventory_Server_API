@@ -10,6 +10,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://vm.deklenn.dev'
 
 interface CardGridProps {
   cards: Card[];
+  preferences?: Record<string, any>;
   showUnowned: boolean;
   onCardClick: (card: Card) => void;
   isLoading?: boolean;
@@ -17,6 +18,7 @@ interface CardGridProps {
 
 export function CardGrid({
   cards,
+  preferences = {},
   showUnowned,
   onCardClick,
   isLoading = false,
@@ -124,16 +126,24 @@ export function CardGrid({
                 )}
               </div>
 
-              {isOwned && (
-                <div className="absolute top-2 right-2 bg-indigo-600 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold shadow-md border border-indigo-400 z-10">
+              {card.quantity >= 2 && (
+                <div className="absolute bottom-2 left-2 bg-indigo-600 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold shadow-md border border-indigo-400 z-30">
                   {card.quantity}
                 </div>
               )}
 
+              {/* Hover Overlay */}
               <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3 z-20 text-left">
                 <p className="text-sm font-bold text-white line-clamp-2">{displayName}</p>
                 {card.type_line && (
                   <p className="text-xs text-zinc-300 truncate mt-1">{card.type_line}</p>
+                )}
+                
+                {preferences[card.oracle_id] && (
+                   <div className="mt-2 pt-2 border-t border-zinc-600 text-xs text-indigo-300">
+                     <p>Status: {preferences[card.oracle_id].status}</p>
+                     <p>Condition: {preferences[card.oracle_id].condition}</p>
+                   </div>
                 )}
               </div>
             </button>
