@@ -1,7 +1,11 @@
+import os
 import requests
+from dotenv import load_dotenv
+load_dotenv()
+
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 def notify_me(message: str, severity: int = 3) -> None:
-    WEBHOOK_URL = ""
 
     match severity:
         case 0:
