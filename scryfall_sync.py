@@ -21,6 +21,11 @@ def scryfall_sync():
 
     today = date.today().isoformat()
 
+    print("Loading existing image cache...")
+    cursor.execute("SELECT oracle_id FROM ref_cards WHERE LENGTH(image_data) > 0")
+    existing_images = {row[0] for row in cursor.fetchall()}
+    print(f"Found {len(existing_images)} cards with existing art.")
+
     # Get the last sync date from db
     cursor.execute("SELECT meta_value FROM meta_data WHERE meta_key = 'last_scryfall_sync'")
     row = cursor.fetchone()
@@ -49,7 +54,7 @@ def scryfall_sync():
             b = VALUES(b),
             r = VALUES(r),
             g = VALUES(g),
-            image_data = VALUES(image_data)
+            image_data = IF(LENGTH(image_data) > 0, image_data, VALUES(image_data))
     """
 
     count = 0
@@ -71,7 +76,7 @@ def scryfall_sync():
         batch = []
 
         for card in cards_generator:
-
+            oracle_id = card.get('oracle_id')
             colors = card.get('color_identity', [])
 
             w = 1 if 'W' in colors else 0
@@ -80,30 +85,33 @@ def scryfall_sync():
             r = 1 if 'R' in colors else 0
             g = 1 if 'G' in colors else 0
 
-            image_url = card.get('image_uris', {}).get('large')
-            
-            if not image_url and 'card_faces' in card:
-                image_url = card['card_faces'][0].get('image_uris', {}).get('large')
-
             image_data = b''
-            if image_url:
-                for attempt in range(3):
-                    try:
-                        img_response = requests.get(image_url, timeout=10)
-                        if img_response.status_code == 200:
-                            image_data = img_response.content
-                            break
-                        else:
-                            print(f"Attempt {attempt+1}: Received status {img_response.status_code}")
-                    except Exception as e:
-                        if attempt < 2:
-                            time.sleep(1)
-                        else:
-                            print(f"Failed to download image for {card.get('name')} after 3 attempts: {e}")
+
+            if oracle_id not in existing_images:
+                image_url = card.get('image_uris', {}).get('large')
+                
+                if not image_url and 'card_faces' in card:
+                    image_url = card['card_faces'][0].get('image_uris', {}).get('large')
+
+                if image_url:
+                    for attempt in range(3):
+                        try:
+                            img_response = requests.get(image_url, timeout=10)
+                            if img_response.status_code == 200:
+                                image_data = img_response.content
+                                existing_images.add(oracle_id) 
+                                break
+                            else:
+                                print(f"Attempt {attempt + 1}: Received status {img_response.status_code}")
+                        except Exception as e:
+                            if attempt < 2:
+                                time.sleep(1)
+                            else:
+                                print(f"Failed to download image for {card.get('name')} after 3 attempts: {e}")
 
             # Trim card data
             card_data = (
-                card.get('oracle_id'),
+                oracle_id,
                 card.get('name'),
                 card.get('type_line'),
                 card.get('cmc'),
@@ -142,6 +150,7 @@ def scryfall_sync():
     db.commit()
     cursor.close()
     db.close()
+    
     print(f"Total cards synced: {count}")
     if count > 0:
         notify_me(f"Cards synced: {count}")
