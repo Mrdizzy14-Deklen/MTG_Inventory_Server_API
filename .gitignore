@@ -212,3 +212,6 @@ __marimo__/
 
 # Ignore startup scripts
 *.sh
+
+# Ignore Mac files
+*.DS_Store
