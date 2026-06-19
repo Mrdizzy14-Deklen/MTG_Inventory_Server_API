@@ -195,7 +195,7 @@ class UserLoginRequest(BaseModel):
 # Register a user account
 @app.post("/register_user")
 @limiter.limit("5/hour") # Limit to 5 requests per hour
-def register_user(user: UserCreateRequest, background_tasks: BackgroundTasks):
+def register_user(user: UserCreateRequest, request: Request, background_tasks: BackgroundTasks):
     
     if user.username.strip().lower() in ["admin", "root", "system", "api"]:
         raise HTTPException(status_code=400, detail="Invalid username.")
