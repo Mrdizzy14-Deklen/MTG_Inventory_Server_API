@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS meta_data (
 CREATE TABLE IF NOT EXISTS trade_preferences (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
-    oracle_id VARCHAR(255) DEFAULT NULL, -- NULL means general preference
+    oracle_id VARCHAR(36) DEFAULT NULL, -- NULL means general preference
     tag VARCHAR(50) DEFAULT NULL, -- General title for preference
     notes TEXT, -- User notes about this preference
     trade_status ENUM('for_trade', 'looking_for', 'not_for_trade') NOT NULL,
