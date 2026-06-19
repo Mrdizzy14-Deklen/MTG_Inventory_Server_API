@@ -3,6 +3,7 @@ load_dotenv()  # Load environment variables from .env file
 import os
 from fastapi import FastAPI, HTTPException, Request, Security, Depends
 from fastapi.security.api_key import APIKeyHeader
+from fastapi.responses import Response
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
 import mysql.connector
@@ -475,7 +476,7 @@ def view_inventory(user_id: int = Depends(get_current_user)):
 
     try:
         query = """
-            SELECT r.card_name, i.quantity 
+            SELECT r.oracle_id, r.card_name, i.quantity 
             FROM inventory i
             JOIN ref_cards r ON i.oracle_id = r.oracle_id
             WHERE i.user_id = %s
@@ -580,6 +581,25 @@ def search_cards(request: CardSearchRequest, user_id: int = Depends(get_current_
             raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
         finally:
             db.close()
+
+# Fetch card image by oracle_id
+@app.get("/cards/image/{oracle_id}")
+def get_card_image(oracle_id: str):
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT image_data FROM ref_cards WHERE oracle_id = %s", (oracle_id,))
+        result = cursor.fetchone()
+        
+        if not result or not result['image_data']:
+            raise HTTPException(status_code=404, detail="Image not found")
+        
+        return Response(content=result['image_data'], media_type="image/jpeg") 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Database query failed.")
+    finally:
+        cursor.close()
+        db.close()
 
 class TradePreferenceRequest(BaseModel):
     oracle_id: str = None   # Specific card
