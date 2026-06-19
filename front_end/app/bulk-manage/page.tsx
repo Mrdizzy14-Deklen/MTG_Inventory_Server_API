@@ -17,6 +17,28 @@ export default function BulkManagePage() {
   });
   const [isLoading, setIsLoading] = useState(false);
 
+  const parseInputToCards = () => {
+    return cardNames.split('\n').filter(line => line.trim() !== '').map(line => {
+      const trimmedLine = line.trim();
+      const firstSpaceIndex = trimmedLine.indexOf(' ');
+      
+      const firstPart = trimmedLine.substring(0, firstSpaceIndex);
+      const isQuantity = firstPart.length > 0 && /^\d+$/.test(firstPart);
+
+      if (isQuantity && firstSpaceIndex !== -1) {
+        return {
+          name: trimmedLine.substring(firstSpaceIndex + 1).trim(),
+          quantity: parseInt(firstPart, 10)
+        };
+      }
+      
+      return {
+        name: trimmedLine,
+        quantity: 1
+      };
+    });
+  };
+
   const handleAddCards = async () => {
     if (!cardNames.trim()) return;
 
@@ -24,26 +46,7 @@ export default function BulkManagePage() {
     setFeedback({ type: null });
 
     try {
-      const cards = cardNames.split('\n').filter(line => line.trim() !== '').map(line => {
-        const trimmedLine = line.trim();
-        const firstSpaceIndex = trimmedLine.indexOf(' ');
-        
-        const firstPart = trimmedLine.substring(0, firstSpaceIndex);
-        const isQuantity = firstPart.length > 0 && /^\d+$/.test(firstPart);
-
-        if (isQuantity && firstSpaceIndex !== -1) {
-          return {
-            name: trimmedLine.substring(firstSpaceIndex + 1).trim(),
-            quantity: parseInt(firstPart, 10)
-          };
-        }
-        
-        return {
-          name: trimmedLine,
-          quantity: 1
-        };
-      });
-
+      const cards = parseInputToCards();
       const result = await addBulk(cards);
 
       if (result.status === 'success') {
@@ -57,10 +60,20 @@ export default function BulkManagePage() {
       }
     } catch (error: any) {
       console.error('Add bulk failed:', error);
-      setFeedback({
-        type: 'error',
-        errors: [error.message || 'Failed to connect to server'],
-      });
+      
+      let errorMessages = [error.message || 'Failed to connect to server'];
+      
+      // Look for the specific FastAPI string and split it nicely
+      if (error.message && error.message.includes('Cards not found in database:')) {
+        const parts = error.message.split('Cards not found in database:');
+        const cardsList = parts[1].split(',').map((c: string) => c.trim());
+        errorMessages = [
+          'Import aborted. The following cards were not found:',
+          ...cardsList
+        ];
+      }
+
+      setFeedback({ type: 'error', errors: errorMessages });
     } finally {
       setIsLoading(false);
     }
@@ -73,26 +86,7 @@ export default function BulkManagePage() {
     setFeedback({ type: null });
 
     try {
-      const cards = cardNames.split('\n').filter(line => line.trim() !== '').map(line => {
-        const trimmedLine = line.trim();
-        const firstSpaceIndex = trimmedLine.indexOf(' ');
-        
-        const firstPart = trimmedLine.substring(0, firstSpaceIndex);
-        const isQuantity = firstPart.length > 0 && /^\d+$/.test(firstPart);
-
-        if (isQuantity && firstSpaceIndex !== -1) {
-          return {
-            name: trimmedLine.substring(firstSpaceIndex + 1).trim(),
-            quantity: parseInt(firstPart, 10)
-          };
-        }
-        
-        return {
-          name: trimmedLine,
-          quantity: 1
-        };
-      });
-
+      const cards = parseInputToCards();
       const result = await removeBulk(cards);
 
       if (result.status === 'success') {
@@ -106,10 +100,19 @@ export default function BulkManagePage() {
       }
     } catch (error: any) {
       console.error('Remove bulk failed:', error);
-      setFeedback({
-        type: 'error',
-        errors: [error.message || 'Failed to connect to server'],
-      });
+      
+      let errorMessages = [error.message || 'Failed to connect to server'];
+      
+      if (error.message && error.message.includes('Cards not found in database:')) {
+        const parts = error.message.split('Cards not found in database:');
+        const cardsList = parts[1].split(',').map((c: string) => c.trim());
+        errorMessages = [
+          'Removal aborted. The following cards were not found:',
+          ...cardsList
+        ];
+      }
+
+      setFeedback({ type: 'error', errors: errorMessages });
     } finally {
       setIsLoading(false);
     }
@@ -160,19 +163,23 @@ export default function BulkManagePage() {
               <div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
                 <X className="text-red-500" size={20} />
                 <span className="text-red-500 font-medium">
-                  {feedback.errors && feedback.errors.length > 0
-                    ? 'Some cards could not be processed:'
+                  {feedback.errors && feedback.errors.length > 1
+                    ? feedback.errors[0] // E.g. "Import aborted. The following cards were not found:"
                     : 'Operation failed'}
                 </span>
               </div>
-              {feedback.errors && feedback.errors.length > 0 && (
-                <div className="p-4 bg-muted/30 border border-border rounded-lg">
+              {feedback.errors && (feedback.errors.length > 1 || feedback.errors[0] !== 'Operation failed') && (
+                <div className="p-4 bg-muted/30 border border-border rounded-lg max-h-48 overflow-y-auto">
                   <ul className="space-y-1">
-                    {feedback.errors.map((error, idx) => (
-                      <li key={idx} className="text-sm text-muted-foreground">
-                        • {error}
-                      </li>
-                    ))}
+                    {feedback.errors.map((error, idx) => {
+                      // Skip the first title element if it's our parsed array
+                      if (idx === 0 && feedback.errors!.length > 1) return null; 
+                      return (
+                        <li key={idx} className="text-sm text-muted-foreground">
+                          • {error}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
