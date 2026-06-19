@@ -209,3 +209,6 @@ __marimo__/
 
 # VS Code settings
 .vscode/
+
+# Ignore startup scripts
+*.sh
