@@ -503,6 +503,7 @@ class CardSearchRequest(BaseModel):
     r: Optional[bool] = None
     g: Optional[bool] = None
     owned: Optional[bool] = False
+    commander_identity: Optional[List[str]] = None
 
 # Updated route name to reflect global search
 @api_router.post("/search/cards")
@@ -510,8 +511,6 @@ def search_cards(request: CardSearchRequest, user_id: int = Depends(get_current_
     db = get_db()
     with db.cursor(dictionary=True) as cursor:
         try:
-            # We select from ref_cards, and LEFT JOIN the specific user's inventory
-            # COALESCE turns NULL quantities (unowned cards) into 0
             query = """
                 SELECT 
                     r.oracle_id, r.card_name, r.type_line, r.mana_cost, 
@@ -524,20 +523,26 @@ def search_cards(request: CardSearchRequest, user_id: int = Depends(get_current_
             """
             params = [user_id]
 
-            # --- The Owned Filter ---
+            # --- Owned ---
             if request.owned:
                 query += " AND i.quantity > 0"
 
-            # --- Fuzzy Searches (LIKE) ---
+            # --- Fuzzy Search ---
             if request.card_name:
-                query += " AND r.card_name LIKE %s"
-                params.append(f"%{request.card_name}%")
+                tokens = request.card_name.split()
+                for token in tokens:
+                    query += " AND r.card_name LIKE %s"
+                    params.append(f"%{token}%")
             if request.type_line:
-                query += " AND r.type_line LIKE %s"
-                params.append(f"%{request.type_line}%")
+                tokens = request.type_line.split()
+                for token in tokens:
+                    query += " AND r.type_line LIKE %s"
+                    params.append(f"%{token}%")
             if request.text_box:
-                query += " AND r.text_box LIKE %s"
-                params.append(f"%{request.text_box}%")
+                tokens = request.text_box.split()
+                for token in tokens:
+                    query += " AND r.text_box LIKE %s"
+                    params.append(f"%{token}%")
 
             # --- Exact Matches ---
             if request.mana_cost is not None:
@@ -570,6 +575,12 @@ def search_cards(request: CardSearchRequest, user_id: int = Depends(get_current_
                 query += " AND r.g = %s"
                 params.append(request.g)
 
+            if request.commander_identity is not None:
+                allowed_colors = set([c.upper() for c in request.commander_identity])
+                for color in ['W', 'U', 'B', 'R', 'G']:
+                    if color not in allowed_colors:
+                        query += f" AND r.{color.lower()} = 0"
+
             cursor.execute(query, tuple(params))
             results = cursor.fetchall()
 
@@ -580,7 +591,7 @@ def search_cards(request: CardSearchRequest, user_id: int = Depends(get_current_
         finally:
             db.close()
 
-app.mount("/images", StaticFiles(directory="images"), name="images")
+app.mount("/images", StaticFiles(directory="images", headers={"Cache-Control": "public, max-age=604800, immutable"}), name="images")
 
 class TradePreferenceRequest(BaseModel):
     oracle_id: str = None   # Specific card
