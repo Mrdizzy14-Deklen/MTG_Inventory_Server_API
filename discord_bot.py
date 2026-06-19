@@ -1,9 +1,11 @@
-import os
 from dotenv import load_dotenv
 load_dotenv()
+
+import os
+
+from aiohttp import web
 import discord
 from discord.ext import commands
-from aiohttp import web
 
 GUILD_ID = int(os.getenv("GUILD_ID"))
 BOT_TOKEN = os.getenv("BOT_TOKEN")

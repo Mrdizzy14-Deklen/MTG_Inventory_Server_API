@@ -1,6 +1,7 @@
 import os
 import requests
 import time
+
 from bot_utilities import notify_me
 
 IMAGE_DIR = "images/"

@@ -1,7 +1,8 @@
-import os
-import requests
 from dotenv import load_dotenv
 load_dotenv()
+
+import os
+import requests
 
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 

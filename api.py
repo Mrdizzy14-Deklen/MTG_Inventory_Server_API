@@ -1,26 +1,28 @@
 from dotenv import load_dotenv
 load_dotenv()  # Load environment variables from .env file
+
+from datetime import datetime, timedelta, UTC
 import os
+import secrets
+from typing import List, Optional
+
 from fastapi import FastAPI, HTTPException, Request, Security, Depends, BackgroundTasks, APIRouter
-from fastapi.security.api_key import APIKeyHeader
-from fastapi.responses import Response, HTMLResponse
-from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.security import OAuth2PasswordBearer
+from fastapi.security.api_key import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
+import httpx
+from jose import jwt
 import mysql.connector
 from mysql.connector import pooling
-from pydantic import BaseModel, Field
-from typing import List
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
 from passlib.context import CryptContext
-from jose import jwt
-from datetime import datetime, timedelta, UTC
+from pydantic import BaseModel, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+
 from bot_utilities import notify_me
-from typing import Optional
-import httpx
-import secrets
 
 # Load the API key from env var
 API_KEY = os.getenv("API_KEY")

@@ -1,11 +1,14 @@
+
+from datetime import date
 import os
 import requests
-import mysql.connector
-import ijson
-from datetime import date
-import urllib.parse
-import gzip
 import time
+
+import gzip
+import ijson
+import mysql.connector
+import urllib.parse
+
 from bot_utilities import notify_me
 
 IMAGE_DIR = "images/"
