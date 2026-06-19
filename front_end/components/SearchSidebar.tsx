@@ -17,6 +17,8 @@ export interface SearchFilters {
   text: string;
   power: string;
   toughness: string;
+  quantityOperator: string;
+  quantityValue: string;
 }
 
 interface SearchSidebarProps {
@@ -38,6 +40,8 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
     text: '',
     power: '',
     toughness: '',
+    quantityOperator: '>=',
+    quantityValue: '',
   });
 
   const toggleColor = (color: string) => {
@@ -65,7 +69,6 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
   return (
     <aside className="w-64 bg-card border-r border-border p-6 overflow-y-auto max-h-screen">
       <div className="space-y-6">
-        {/* Search Button at top */}
         <Button
           onClick={handleSearch}
           disabled={isLoading}
@@ -73,6 +76,39 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
         >
           {isLoading ? 'Searching...' : 'Search'}
         </Button>
+
+        {/* Quantity Owned */}
+        <div className="space-y-2">
+          <Label htmlFor="quantityValue" className="text-sm font-semibold">
+            Quantity Owned
+          </Label>
+          <div className="flex gap-2">
+            <select
+              className="flex h-9 w-16 rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={filters.quantityOperator}
+              onChange={(e) => setFilters(prev => ({ ...prev, quantityOperator: e.target.value }))}
+            >
+              <option value=">=">&ge;</option>
+              <option value=">">&gt;</option>
+              <option value="=">=</option>
+              <option value="<=">&le;</option>
+              <option value="<">&lt;</option>
+            </select>
+            <Input
+              id="quantityValue"
+              type="number"
+              min="0"
+              placeholder="Amount"
+              value={filters.quantityValue}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val !== '' && parseInt(val) < 0) return;
+                setFilters(prev => ({ ...prev, quantityValue: val }));
+              }}
+              className="bg-background border-border text-foreground flex-1"
+            />
+          </div>
+        </div>
 
         {/* Colors */}
         <div className="space-y-3">
@@ -85,10 +121,7 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
                   checked={filters.colors.includes(color)}
                   onCheckedChange={() => toggleColor(color)}
                 />
-                <Label
-                  htmlFor={`color-${color}`}
-                  className="text-sm font-normal cursor-pointer"
-                >
+                <Label htmlFor={`color-${color}`} className="text-sm font-normal cursor-pointer">
                   {color}
                 </Label>
               </div>
@@ -107,10 +140,7 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
                   checked={filters.commanderIdentity.includes(color)}
                   onCheckedChange={() => toggleCommanderIdentity(color)}
                 />
-                <Label
-                  htmlFor={`commander-${color}`}
-                  className="text-sm font-normal cursor-pointer"
-                >
+                <Label htmlFor={`commander-${color}`} className="text-sm font-normal cursor-pointer">
                   {color}
                 </Label>
               </div>
@@ -120,9 +150,7 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
 
         {/* Type */}
         <div className="space-y-2">
-          <Label htmlFor="type" className="text-sm font-semibold">
-            Type
-          </Label>
+          <Label htmlFor="type" className="text-sm font-semibold">Type</Label>
           <Input
             id="type"
             placeholder="e.g., Legendary Creature"
@@ -134,9 +162,7 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
 
         {/* CMC */}
         <div className="space-y-2">
-          <Label htmlFor="cmc" className="text-sm font-semibold">
-            CMC
-          </Label>
+          <Label htmlFor="cmc" className="text-sm font-semibold">CMC</Label>
           <Input
             id="cmc"
             type="number"
@@ -157,7 +183,6 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
               setFilters((prev) => ({ ...prev, rarity: value === 'any' ? [] : [value] }))
             }
           >
-            {/* 🔥 Added an "Any" option to allow deselection */}
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="any" id="rarity-any" />
               <Label htmlFor="rarity-any" className="text-sm font-normal cursor-pointer text-muted-foreground">
@@ -167,10 +192,7 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
             {RARITIES.map((rarity) => (
               <div key={rarity} className="flex items-center space-x-2">
                 <RadioGroupItem value={rarity.toLowerCase()} id={`rarity-${rarity}`} />
-                <Label
-                  htmlFor={`rarity-${rarity}`}
-                  className="text-sm font-normal cursor-pointer"
-                >
+                <Label htmlFor={`rarity-${rarity}`} className="text-sm font-normal cursor-pointer">
                   {rarity}
                 </Label>
               </div>
@@ -180,9 +202,7 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
 
         {/* Text/Ability */}
         <div className="space-y-2">
-          <Label htmlFor="text" className="text-sm font-semibold">
-            Text/Ability
-          </Label>
+          <Label htmlFor="text" className="text-sm font-semibold">Text/Ability</Label>
           <Textarea
             id="text"
             placeholder="Search card abilities..."
@@ -194,9 +214,7 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
 
         {/* Power */}
         <div className="space-y-2">
-          <Label htmlFor="power" className="text-sm font-semibold">
-            Power
-          </Label>
+          <Label htmlFor="power" className="text-sm font-semibold">Power</Label>
           <Input
             id="power"
             type="number"
@@ -210,9 +228,7 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
 
         {/* Toughness */}
         <div className="space-y-2">
-          <Label htmlFor="toughness" className="text-sm font-semibold">
-            Toughness
-          </Label>
+          <Label htmlFor="toughness" className="text-sm font-semibold">Toughness</Label>
           <Input
             id="toughness"
             type="number"

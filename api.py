@@ -942,6 +942,8 @@ class CardSearchRequest(BaseModel):
     toughness: Optional[str] = None
     rarity: Optional[str] = None
     owned: Optional[bool] = False
+    quantity_operator: Optional[str] = None
+    quantity_value: Optional[int] = None
 
 # Search's the db with given params
 @api_router.post("/search_cards")
@@ -1011,6 +1013,10 @@ def search_cards(request: CardSearchRequest, user_id: int = Depends(JWT_get_user
             if request.toughness:
                 query += " AND r.toughness = %s"
                 params.append(request.toughness)
+
+            if request.quantity_value is not None and request.quantity_operator in ['>', '>=', '<', '<=', '=']:
+                query += f" AND COALESCE(i.quantity, 0) {request.quantity_operator} %s"
+                params.append(request.quantity_value)
 
             # Color identity
 

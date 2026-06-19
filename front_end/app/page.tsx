@@ -58,13 +58,28 @@ export default function Page() {
   }, [router]);
 
   const emptySidebarFilters: SidebarFilters = {
-    colors: [], commanderIdentity: [], type: '', cmc: '', rarity: '', text: '', power: '', toughness: ''
+    colors: [], commanderIdentity: [], type: '', cmc: '', rarity: [], text: '', power: '', toughness: '', quantityOperator: '>=', quantityValue: ''
   };
 
   const handleSearch = async (sidebarFilters: SidebarFilters = emptySidebarFilters) => {
     setIsSearching(true);
     try {
       const apiFilters: any = {};
+
+      let currentShowUnowned = showUnowned;
+
+      if (sidebarFilters.quantityValue !== '') {
+        const qVal = parseInt(sidebarFilters.quantityValue, 10);
+        const qOp = sidebarFilters.quantityOperator;
+        
+        if ((qOp === '>' && qVal >= 0) || (qOp === '>=' && qVal >= 1) || (qOp === '=' && qVal >= 1)) {
+          setShowUnowned(false);
+          currentShowUnowned = false;
+        }
+
+        apiFilters.quantity_operator = qOp;
+        apiFilters.quantity_value = qVal;
+      }
 
       const colorMap: Record<string, string> = {
         'White': 'W',
@@ -108,7 +123,7 @@ export default function Page() {
       if (sidebarFilters.power) apiFilters.power = sidebarFilters.power;
       if (sidebarFilters.toughness) apiFilters.toughness = sidebarFilters.toughness;
 
-      if (!showUnowned) apiFilters.owned = true;
+      if (!currentShowUnowned) apiFilters.owned = true;
 
       const results = await fetchCards(apiFilters);
       setCards(results);
@@ -186,7 +201,7 @@ export default function Page() {
               onCheckedChange={(checked) => setShowUnowned(checked as boolean)}
             />
             <Label htmlFor="show-unowned" className="cursor-pointer text-sm">
-              Show global database (cards I don&apos;t own)
+              Show cards I don&apos;t own
             </Label>
           </div>
         </div>

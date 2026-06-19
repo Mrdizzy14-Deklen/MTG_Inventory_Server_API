@@ -63,7 +63,6 @@ export default function BulkManagePage() {
       
       let errorMessages = [error.message || 'Failed to connect to server'];
       
-      // Look for the specific FastAPI string and split it nicely
       if (error.message && error.message.includes('Cards not found in database:')) {
         const parts = error.message.split('Cards not found in database:');
         const cardsList = parts[1].split(',').map((c: string) => c.trim());
@@ -164,7 +163,7 @@ export default function BulkManagePage() {
                 <X className="text-red-500" size={20} />
                 <span className="text-red-500 font-medium">
                   {feedback.errors && feedback.errors.length > 1
-                    ? feedback.errors[0] // E.g. "Import aborted. The following cards were not found:"
+                    ? feedback.errors[0]
                     : 'Operation failed'}
                 </span>
               </div>
@@ -172,7 +171,6 @@ export default function BulkManagePage() {
                 <div className="p-4 bg-muted/30 border border-border rounded-lg max-h-48 overflow-y-auto">
                   <ul className="space-y-1">
                     {feedback.errors.map((error, idx) => {
-                      // Skip the first title element if it's our parsed array
                       if (idx === 0 && feedback.errors!.length > 1) return null; 
                       return (
                         <li key={idx} className="text-sm text-muted-foreground">
