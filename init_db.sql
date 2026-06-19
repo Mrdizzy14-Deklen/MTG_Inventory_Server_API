@@ -68,3 +68,6 @@ CREATE TABLE IF NOT EXISTS pending_users (
     discord_id VARCHAR(50) DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 2026-06-18
+ALTER TABLE trade_preferences ADD UNIQUE KEY unique_user_card (user_id, oracle_id);
