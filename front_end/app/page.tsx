@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import Cookies from 'js-cookie';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,37 @@ export default function Page() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
+  const [sortBy, setSortBy] = useState('name');
+
+  const sortedCards = useMemo(() => {
+    const cardsCopy = [...cards];
+    cardsCopy.sort((a, b) => {
+      const nameA = a.card_name || a.name || '';
+      const nameB = b.card_name || b.name || '';
+
+      if (sortBy === 'cmc') {
+        const cmcA = a.mana_cost || 0;
+        const cmcB = b.mana_cost || 0;
+        if (cmcA !== cmcB) return cmcA - cmcB;
+        return nameA.localeCompare(nameB);
+      }
+
+      if (sortBy === 'color') {
+        const getScore = (card: any) => 
+          (card.w ? 16 : 0) + (card.u ? 8 : 0) + (card.b ? 4 : 0) + (card.r ? 2 : 0) + (card.g ? 1 : 0);
+        
+        const scoreA = getScore(a);
+        const scoreB = getScore(b);
+        
+        if (scoreA !== scoreB) return scoreB - scoreA;
+        return nameA.localeCompare(nameB);
+      }
+
+      return nameA.localeCompare(nameB);
+    });
+    
+    return cardsCopy;
+  }, [cards, sortBy]);
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -194,21 +225,39 @@ export default function Page() {
             </Link>
           </div>
 
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="show-unowned"
-              checked={showUnowned}
-              onCheckedChange={(checked) => setShowUnowned(checked as boolean)}
-            />
-            <Label htmlFor="show-unowned" className="cursor-pointer text-sm">
-              Show cards I don&apos;t own
-            </Label>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="show-unowned"
+                checked={showUnowned}
+                onCheckedChange={(checked) => setShowUnowned(checked as boolean)}
+              />
+              <Label htmlFor="show-unowned" className="cursor-pointer text-sm">
+                Show cards I don&apos;t own
+              </Label>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Label htmlFor="sort-by" className="text-sm font-medium text-foreground">
+                Sort by:
+              </Label>
+              <select
+                id="sort-by"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="name">Name</option>
+                <option value="color">Color</option>
+                <option value="cmc">CMC</option>
+              </select>
+            </div>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
           <CardGrid
-            cards={cards}
+            cards={sortedCards}
             preferences={preferences}
             showUnowned={showUnowned}
             onCardClick={handleCardClick}

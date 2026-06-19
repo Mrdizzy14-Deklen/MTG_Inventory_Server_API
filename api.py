@@ -357,11 +357,15 @@ def get_inventory(user_id: int = Depends(JWT_get_user)):
 
             cursor.execute(
                 """
-                SELECT r.oracle_id, r.card_name, i.quantity 
+                SELECT 
+                    r.oracle_id, r.card_name, r.type_line, r.mana_cost, 
+                    r.rarity, r.text_box, r.power, r.toughness, 
+                    r.w, r.u, r.b, r.r, r.g, 
+                    i.quantity 
                 FROM inventory i
                 JOIN ref_cards r ON i.oracle_id = r.oracle_id
                 WHERE i.user_id = %s
-                """, 
+                """,
                 (user_id,)
             )
             items = cursor.fetchall()
