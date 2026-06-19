@@ -949,7 +949,7 @@ class CardSearchRequest(BaseModel):
     toughness_operator: Optional[str] = None
     rarity: Optional[str] = None
     owned: Optional[bool] = False
-    quantity_value: Optional[int] = None
+    quantity: Optional[int] = None
     quantity_operator: Optional[str] = None
 
 # Search's the db with given params
@@ -1007,9 +1007,9 @@ def search_cards(request: CardSearchRequest, user_id: int = Depends(JWT_get_user
 
             valid_ops = ['>', '>=', '<', '<=', '=']
 
-            if request.quantity_value is not None and request.quantity_operator in valid_ops:
+            if request.quantity is not None and request.quantity_operator in valid_ops:
                 query += f" AND COALESCE(i.quantity, 0) {request.quantity_operator} %s"
-                params.append(request.quantity_value)
+                params.append(request.quantity)
 
             if request.mana_cost is not None and request.mana_cost_operator in valid_ops:
                 query += f" AND r.mana_cost {request.mana_cost_operator} %s"

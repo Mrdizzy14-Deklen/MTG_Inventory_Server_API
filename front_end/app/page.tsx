@@ -128,34 +128,29 @@ export default function Page() {
     setIsSearching(true);
     try {
       const apiFilters: any = {};
-
       let currentShowUnowned = showUnowned;
 
       if (sidebarFilters.quantity !== '') {
-        const qVal = parseInt(sidebarFilters.quantity, 10);
-        const qOp = sidebarFilters.quantityOperator;
-        
-        if ((qOp === '>' && qVal >= 0) || (qOp === '>=' && qVal >= 1) || (qOp === '=' && qVal >= 1)) {
-          setShowUnowned(false);
-          currentShowUnowned = false;
-        }
-
-        apiFilters.quantity_operator = qOp;
-        apiFilters.quantity_value = qVal;
+        apiFilters.quantity_operator = sidebarFilters.quantityOperator;
+        apiFilters.quantity = parseInt(sidebarFilters.quantity, 10);
       }
-
       if (sidebarFilters.cmc !== '') {
-        apiFilters.cmc_operator = sidebarFilters.cmcOperator;
-        apiFilters.cmc = parseInt(sidebarFilters.cmc, 10);
+        apiFilters.mana_cost_operator = sidebarFilters.cmcOperator;
+        apiFilters.mana_cost = parseInt(sidebarFilters.cmc, 10);
       }
       if (sidebarFilters.power !== '') {
         apiFilters.power_operator = sidebarFilters.powerOperator;
-        apiFilters.power = parseInt(sidebarFilters.power, 10);
+        apiFilters.power = sidebarFilters.power;
       }
       if (sidebarFilters.toughness !== '') {
         apiFilters.toughness_operator = sidebarFilters.toughnessOperator;
-        apiFilters.toughness = parseInt(sidebarFilters.toughness, 10);
+        apiFilters.toughness = sidebarFilters.toughness;
       }
+      
+      if (cardName) apiFilters.card_name = cardName;
+      if (sidebarFilters.type) apiFilters.type_line = sidebarFilters.type;
+      if (sidebarFilters.rarity && sidebarFilters.rarity.length > 0) apiFilters.rarity = sidebarFilters.rarity[0];
+      if (sidebarFilters.text) apiFilters.text_box = sidebarFilters.text;
 
       const colorMap: Record<string, string> = {
         'White': 'W',
@@ -165,11 +160,6 @@ export default function Page() {
         'Green': 'G',
         'Colorless': 'C'
       };
-
-      if (cardName) apiFilters.card_name = cardName;
-      if (sidebarFilters.type) apiFilters.type_line = sidebarFilters.type;
-      if (sidebarFilters.rarity && sidebarFilters.rarity.length > 0) apiFilters.rarity = sidebarFilters.rarity[0];
-      if (sidebarFilters.text) apiFilters.text_box = sidebarFilters.text;
 
       if (sidebarFilters.colors && sidebarFilters.colors.length > 0) {
         const mappedColors = sidebarFilters.colors.map(c => colorMap[c]);
