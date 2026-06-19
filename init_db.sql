@@ -56,3 +56,19 @@ CREATE TABLE IF NOT EXISTS trade_preferences (
 -- 2026-03-30
 ALTER TABLE ref_cards
 ADD image_data MEDIUMBLOB NOT NULL;
+
+-- 2026-06-18
+ALTER TABLE users
+ADD discord_handle VARCHAR(100),
+ADD discord_id VARCHAR(50) UNIQUE DEFAULT NULL,
+ADD is_active BOOLEAN DEFAULT 0;
+
+-- 2026-06-18
+CREATE TABLE IF NOT EXISTS pending_users (
+    verify_token VARCHAR(32) PRIMARY KEY,
+    username VARCHAR(50) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    discord_handle VARCHAR(100) NOT NULL,
+    discord_id VARCHAR(50) DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

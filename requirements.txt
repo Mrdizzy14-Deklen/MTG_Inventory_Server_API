@@ -8,3 +8,6 @@ ijson
 slowapi
 passlib
 python-jose[cryptography]
+httpx
+aiohttp
+discord

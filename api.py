@@ -1,9 +1,9 @@
 from dotenv import load_dotenv
 load_dotenv()  # Load environment variables from .env file
 import os
-from fastapi import FastAPI, HTTPException, Request, Security, Depends
+from fastapi import FastAPI, HTTPException, Request, Security, Depends, BackgroundTasks
 from fastapi.security.api_key import APIKeyHeader
-from fastapi.responses import Response
+from fastapi.responses import Response, HTMLResponse
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
 import mysql.connector
@@ -18,6 +18,8 @@ from jose import jwt
 from datetime import datetime, timedelta, UTC
 from bot_utilities import notify_me
 from typing import Optional
+import httpx
+import secrets
 
 # Load the API key from env var
 API_KEY = os.getenv("API_KEY")
@@ -45,6 +47,33 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+async def trigger_discord_bot(discord_handle: str, token: str, username: str):
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "http://localhost:8001/send_verify_dm", 
+                json={"discord_handle": discord_handle, "token": token},
+                timeout=5.0
+            )
+            
+            data = response.json()
+            db = get_db()
+            with db.cursor() as cursor:
+                if data.get("status") == "success":
+                    discord_id = data.get("discord_id")
+                    cursor.execute(
+                        "UPDATE pending_users SET discord_id = %s WHERE verify_token = %s", 
+                        (discord_id, token)
+                    )
+                else:
+                    cursor.execute("DELETE FROM pending_users WHERE verify_token = %s", (token,))
+                    print(f"Bot failed to DM {discord_handle}. Pending user deleted.")
+                db.commit()
+            db.close()
+                
+    except Exception as e:
+        print(f"Failed to communicate with Discord bot: {e}")
 
 # Create a pool of connections
 db_pool = pooling.MySQLConnectionPool(
@@ -110,30 +139,99 @@ class UserCreateRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=20, pattern="^[a-zA-Z0-9_]+$")
     # Enforce a minimum password length for security
     password: str = Field(..., min_length=8, max_length=100)
+    # Save discord tag
+    discord: str = Field(..., max_length=32)
 
 # Register a user account
 @app.post("/users/register")
 @limiter.limit("1/hour")
-def register_user(user: UserCreateRequest, request: Request):
+def register_user(user: UserCreateRequest, request: Request, background_tasks: BackgroundTasks):
     
     if user.username.strip().lower() in ["admin", "root", "system", "api"]:
         raise HTTPException(status_code=400, detail="Invalid username.")
 
+    if get_user(user.username):
+        raise HTTPException(status_code=400, detail="Username already taken.")
+
     # Hash the password before it touches the database
     hashed_pass = get_password_hash(user.password)
+    verify_token = secrets.token_hex(8)
     
     db = get_db()
     with db.cursor(dictionary=True) as cursor:
         try:
-            sql = "INSERT INTO users (username, password_hash) VALUES (%s, %s)"
-            cursor.execute(sql, (user.username, hashed_pass))
+            sql = """
+                INSERT INTO pending_users (verify_token, username, password_hash, discord_handle) 
+                VALUES (%s, %s, %s, %s)
+            """
+            cursor.execute(sql, (verify_token, user.username, hashed_pass, user.discord))
             db.commit()
-            notify_me(f"New user registered: {user.username}", severity=0)
-            return {"status": "success", "message": f"User {user.username} created."}
+
+            background_tasks.add_task(trigger_discord_bot, user.discord, verify_token, user.username)
+
+            return {
+                "status": "success", 
+                "message": "Account pending! Please check Discord for your verification link."
+            }
         except mysql.connector.Error as err:
             if err.errno == 1062: # Duplicate entry error
                 raise HTTPException(status_code=400, detail="Username already taken.")
             raise HTTPException(status_code=500, detail="Database error.")
+        finally:
+            db.close()
+
+# Verify a new account
+@app.get("/verify", response_class=HTMLResponse)
+def verify_account(token: str):
+    db = get_db()
+    with db.cursor(dictionary=True) as cursor:
+        try:
+
+            cursor.execute("SELECT * FROM pending_users WHERE verify_token = %s", (token,))
+            pending_user = cursor.fetchone()
+
+            if not pending_user:
+                return """
+                <html><body style="background-color: #09090b; color: white; text-align: center; padding-top: 50px;">
+                    <h2>Verification Failed</h2>
+                    <p>Invalid or expired verification link.</p>
+                </body></html>
+                """
+
+            sql_insert = """
+                INSERT INTO users (username, password_hash, discord_handle, discord_id, is_active)
+                VALUES (%s, %s, %s, %s, 1)
+            """
+            cursor.execute(sql_insert, (
+                pending_user['username'], 
+                pending_user['password_hash'], 
+                pending_user['discord_handle'], 
+                pending_user['discord_id']
+            ))
+
+            cursor.execute("DELETE FROM pending_users WHERE verify_token = %s", (token,))
+            db.commit()
+            
+            notify_me(f"User verified: {pending_user['username']}", severity=0)
+            
+            # 4. Return an HTML page that automatically redirects to the React app
+            return f"""
+            <html>
+                <head>
+                    <meta http-equiv="refresh" content="3;url=https://vm.deklenn.dev/login" />
+                </head>
+                <body style="background-color: #09090b; color: white; font-family: sans-serif; text-align: center; padding-top: 50px;">
+                    <h2>Account Verified!</h2>
+                    <p>Welcome to MTG Inventory, {pending_user['username']}. Redirecting you to login...</p>
+                </body>
+            </html>
+            """
+
+        except mysql.connector.Error as err:
+            db.rollback()
+            if err.errno == 1062:
+                return "<html><body style='color: white; background: #09090b'><h2>Error</h2><p>This username was taken while you were pending.</p></body></html>"
+            return "<html><body style='color: white; background: #09090b'><h2>Error</h2><p>Database error during verification.</p></body></html>"
         finally:
             db.close()
 
@@ -148,6 +246,9 @@ def login_user(request: UserLoginRequest):
 
     if not user:
         raise HTTPException(status_code=400, detail="User not found.")
+
+    if not user.get('is_active'):
+        raise HTTPException(status_code=403, detail="Account is suspended or inactive.")
 
     if not verify_password(request.password, user['password_hash']):
         raise HTTPException(status_code=400, detail="Invalid password.")
