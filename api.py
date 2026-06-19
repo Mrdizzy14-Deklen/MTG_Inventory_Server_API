@@ -1023,6 +1023,10 @@ def search_cards(request: CardSearchRequest, user_id: int = Depends(JWT_get_user
                 query += f" AND CAST(r.toughness AS SIGNED) {request.toughness_operator} %s"
                 params.append(request.toughness)
 
+            if request.rarity:
+                query += " AND r.rarity = %s"
+                params.append(request.rarity)
+            
             # Color identity
 
             if request.w is not None:
