@@ -41,11 +41,7 @@ api_router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://vm.deklenn.dev"
-    ],
+    allow_origins=["https://mtg.deklenn.dev"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
