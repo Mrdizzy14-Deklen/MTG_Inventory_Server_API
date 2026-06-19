@@ -11,7 +11,7 @@ export interface Card {
 }
 
 export async function registerUser(username: string, password: string, discord: string): Promise<any> {
-  const response = await fetch(`${API_BASE_URL}/users/register`, {
+  const response = await fetch(`${API_BASE_URL}/register_user`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -30,7 +30,7 @@ export async function registerUser(username: string, password: string, discord: 
 }
 
 export async function loginUser(username: string, password: string): Promise<string> {
-  const response = await fetch(`${API_BASE_URL}/users/login`, {
+  const response = await fetch(`${API_BASE_URL}/login_user`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -74,7 +74,7 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
 }
 
 export async function fetchInventory(): Promise<Card[]> {
-  const data = await fetchWithAuth('/inventory/user');
+  const data = await fetchWithAuth('/get_inventory');
   const rawInventory = data.inventory || data.cards || (Array.isArray(data) ? data : []);
 
   return rawInventory.map((item: any) => ({
@@ -83,7 +83,7 @@ export async function fetchInventory(): Promise<Card[]> {
 }
 
 export async function fetchCards(filters: Record<string, any>): Promise<Card[]> {
-  const data = await fetchWithAuth('/search/cards', {
+  const data = await fetchWithAuth('/search_cards', {
     method: 'POST',
     body: JSON.stringify(filters),
   });
@@ -102,7 +102,7 @@ export async function updatePreference(preference: {
   tag?: string;
   notes?: string;
 }): Promise<any> {
-  return fetchWithAuth('/trade/preference/set', {
+  return fetchWithAuth('/set_preference', {
     method: 'POST',
     body: JSON.stringify(preference),
   });
@@ -113,7 +113,7 @@ export async function removePreference(preference: {
   status: string;
   tag?: string;
 }): Promise<any> {
-  return fetchWithAuth('/trade/preference/remove', {
+  return fetchWithAuth('/remove_preference', {
     method: 'POST',
     body: JSON.stringify(preference),
   });
@@ -121,7 +121,7 @@ export async function removePreference(preference: {
 
 export async function fetchPreferences(): Promise<any[]> {
   try {
-    const data = await fetchWithAuth('/trade/preferences', {
+    const data = await fetchWithAuth('/get_preferences', {
       method: 'GET',
     });
     
@@ -145,14 +145,14 @@ export interface BulkResponse {
 
 export async function addBulk(cards: BulkCardInput[]): Promise<BulkResponse> {
   console.log(JSON.stringify(cards));
-  return fetchWithAuth('/import/bulk', {
+  return fetchWithAuth('add_bulk', {
     method: "POST",
     body: JSON.stringify({ cards }),
   });
 }
 
 export async function removeBulk(cards: BulkCardInput[]): Promise<BulkResponse> {
-  return fetchWithAuth('/remove/bulk', {
+  return fetchWithAuth('/remove_bulk', {
     method: "POST",
     body: JSON.stringify({ cards }),
   });

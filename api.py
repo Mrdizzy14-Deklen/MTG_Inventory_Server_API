@@ -193,7 +193,7 @@ class UserLoginRequest(BaseModel):
     password: str
 
 # Register a user account
-@app.post("/users/register")
+@app.post("/register_user")
 @limiter.limit("5/hour") # Limit to 5 requests per hour
 def register_user(user: UserCreateRequest, background_tasks: BackgroundTasks):
     
@@ -243,7 +243,7 @@ def register_user(user: UserCreateRequest, background_tasks: BackgroundTasks):
 
 # Verify a new account
 @app.get("/verify", response_class=HTMLResponse)
-def verify_account(token: str):
+def verify(token: str):
 
     db = get_db()
     with db.cursor(dictionary=True) as cursor:
@@ -318,7 +318,7 @@ def verify_account(token: str):
             db.close()
 
 # Start a user session
-@api_router.post("/users/login")
+@api_router.post("/login_user")
 def login_user(request: UserLoginRequest):
 
     user = username_get_user(request.username)
@@ -348,7 +348,7 @@ class BulkCardRequest(BaseModel):
     cards: List[CardRequest]
 
 # Fetch a user's entire inventory
-@api_router.get("/inventory/user")
+@api_router.get("/get_inventory")
 def get_inventory(user_id: int = Depends(JWT_get_user)):
 
     db = get_db()
@@ -376,7 +376,7 @@ def get_inventory(user_id: int = Depends(JWT_get_user)):
             db.close()
 
 # Add individual cards
-@api_router.post("/import/card")
+@api_router.post("/add_card")
 def add_card(request: CardRequest, user_id: int = Depends(JWT_get_user)):
 
     db = get_db()
@@ -394,12 +394,12 @@ def add_card(request: CardRequest, user_id: int = Depends(JWT_get_user)):
                 WHERE card_name = %s 
                 LIMIT 1
                 """, 
-                (request.text,)
+                (request.name,)
             )
             ref_entry = cursor.fetchone()
 
             if not ref_entry:
-                raise HTTPException(status_code=400, detail=f"Card '{request.text}' not found.")
+                raise HTTPException(status_code=400, detail=f"Card '{request.name}' not found.")
             
             oracle_id = ref_entry['oracle_id']
 
@@ -421,11 +421,11 @@ def add_card(request: CardRequest, user_id: int = Depends(JWT_get_user)):
 
             db.commit()
 
-            print_notify(f"User {user_id} added {request.quantity}x '{request.text}' to inventory.")
+            print_notify(f"User {user_id} added {request.quantity}x '{request.name}' to inventory.")
 
             return {
                 "status": "success",
-                "message": f"Added {request.quantity}x '{request.text}' to inventory for user {user_id}."
+                "message": f"Added {request.quantity}x '{request.name}' to inventory for user {user_id}."
             }
         
         except Exception as e:
@@ -440,7 +440,7 @@ def add_card(request: CardRequest, user_id: int = Depends(JWT_get_user)):
             db.close()
 
 # Remove individual cards
-@api_router.post("/remove/card")
+@api_router.post("/remove_card")
 def remove_card(request: CardRequest, user_id: int = Depends(JWT_get_user)):
 
     db = get_db()
@@ -455,7 +455,7 @@ def remove_card(request: CardRequest, user_id: int = Depends(JWT_get_user)):
                 JOIN ref_cards r ON i.oracle_id = r.oracle_id
                 WHERE r.card_name = %s AND i.user_id = %s
                 """, 
-                (request.text, user_id)
+                (request.name, user_id)
             )
             item = cursor.fetchone()
 
@@ -476,8 +476,8 @@ def remove_card(request: CardRequest, user_id: int = Depends(JWT_get_user)):
                     (user_id, oracle_id)
                 )
 
-                message = f"Removed all copies of '{request.text}' from inventory."
-                print_notify(f"User {user_id} removed all copies of '{request.text}' from inventory.")
+                message = f"Removed all copies of '{request.name}' from inventory."
+                print_notify(f"User {user_id} removed all copies of '{request.name}' from inventory.")
 
             else:
                 cursor.execute(
@@ -485,8 +485,8 @@ def remove_card(request: CardRequest, user_id: int = Depends(JWT_get_user)):
                     (request.quantity, user_id, oracle_id)
                 )
 
-                message = f"Removed {request.quantity}x '{request.text}'. New total: {current_qty - request.quantity}."
-                print_notify(f"User {user_id} removed {request.quantity}x '{request.text}' from inventory. New total: {current_qty - request.quantity}.")
+                message = f"Removed {request.quantity}x '{request.name}'. New total: {current_qty - request.quantity}."
+                print_notify(f"User {user_id} removed {request.quantity}x '{request.name}' from inventory. New total: {current_qty - request.quantity}.")
 
             db.commit()
 
@@ -504,7 +504,7 @@ def remove_card(request: CardRequest, user_id: int = Depends(JWT_get_user)):
             db.close()
 
 # Add bulk cards
-@api_router.post("/import/bulk")
+@api_router.post("/add_bulk")
 def add_bulk(request: BulkCardRequest, user_id: int = Depends(JWT_get_user)):
 
     db = get_db()
@@ -579,7 +579,7 @@ def add_bulk(request: BulkCardRequest, user_id: int = Depends(JWT_get_user)):
             db.close()
 
 # Remove bulk cards
-@api_router.post("/remove/bulk")
+@api_router.post("/remove_bulk")
 def remove_bulk(request: BulkCardRequest, user_id: int = Depends(JWT_get_user)):
 
     requested_cards = {}
@@ -665,7 +665,7 @@ def remove_bulk(request: BulkCardRequest, user_id: int = Depends(JWT_get_user)):
 # --- Trade Routes ---
 
 class MoveCardRequest(BaseModel):
-    text: str
+    name: str
     to_username: str
     quantity: int = 1
 
@@ -680,7 +680,7 @@ class TradePreferenceRequest(BaseModel):
     notes: str = ""
 
 # Move a card between users
-@api_router.post("/trade/card")
+@api_router.post("/move_card")
 def move_card(request: MoveCardRequest, user_id: int = Depends(JWT_get_user)):
 
     db = get_db()
@@ -695,7 +695,7 @@ def move_card(request: MoveCardRequest, user_id: int = Depends(JWT_get_user)):
                 JOIN ref_cards r ON i.oracle_id = r.oracle_id
                 WHERE r.card_name = %s AND i.user_id = %s
                 """, 
-                (request.text, user_id)
+                (request.name, user_id)
             )
             item_from = cursor.fetchone()
 
@@ -726,9 +726,9 @@ def move_card(request: MoveCardRequest, user_id: int = Depends(JWT_get_user)):
 
             db.commit()
 
-            print_notify(f"Moved {request.quantity}x '{request.text}' from {user_id} to {request.to_username}.")
+            print_notify(f"Moved {request.quantity}x '{request.name}' from {user_id} to {request.to_username}.")
 
-            return {"status": "success", "message": f"Moved {request.quantity}x '{request.text}' to {request.to_username}."}
+            return {"status": "success", "message": f"Moved {request.quantity}x '{request.name}' to {request.to_username}."}
 
         except Exception as e:
 
@@ -742,7 +742,7 @@ def move_card(request: MoveCardRequest, user_id: int = Depends(JWT_get_user)):
             db.close()
 
 # Move bulk cards between users
-@api_router.post("/trade/bulk")
+@api_router.post("/move_bulk")
 def move_bulk(request: MoveBulkCardRequest, user_id: int = Depends(JWT_get_user)):
 
     to_user = username_get_user(request.to_username)
@@ -834,8 +834,8 @@ def move_bulk(request: MoveBulkCardRequest, user_id: int = Depends(JWT_get_user)
             db.close()
 
 # Fetches all of a user's trade preferences
-@api_router.get("/trade/preferences")
-def get_trade_preferences(user_id: int = Depends(JWT_get_user)):
+@api_router.get("/get_preferences")
+def get_preferences(user_id: int = Depends(JWT_get_user)):
 
     db = get_db()
     with db.cursor(dictionary=True) as cursor:
@@ -863,8 +863,8 @@ def get_trade_preferences(user_id: int = Depends(JWT_get_user)):
             db.close()
 
 # Sets a user's trade preference
-@api_router.post("/trade/preference/set")
-def set_trade_preference(request: TradePreferenceRequest, user_id: int = Depends(JWT_get_user)):
+@api_router.post("set_preference")
+def set_preference(request: TradePreferenceRequest, user_id: int = Depends(JWT_get_user)):
 
     db = get_db()
     with db.cursor() as cursor:
@@ -895,8 +895,8 @@ def set_trade_preference(request: TradePreferenceRequest, user_id: int = Depends
             db.close()
 
 # Removes a user's trade preference
-@api_router.post("/trade/preference/remove")
-def remove_trade_preference(request: TradePreferenceRequest, user_id: int = Depends(JWT_get_user)):
+@api_router.post("/remove_preference")
+def remove_preference(request: TradePreferenceRequest, user_id: int = Depends(JWT_get_user)):
 
     db = get_db()
     with db.cursor() as cursor:
@@ -944,7 +944,7 @@ class CardSearchRequest(BaseModel):
     owned: Optional[bool] = False
 
 # Search's the db with given params
-@api_router.post("/search/cards")
+@api_router.post("/search_cards")
 def search_cards(request: CardSearchRequest, user_id: int = Depends(JWT_get_user)):
 
     db = get_db()
