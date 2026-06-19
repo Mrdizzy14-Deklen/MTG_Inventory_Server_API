@@ -863,7 +863,7 @@ def get_preferences(user_id: int = Depends(JWT_get_user)):
             db.close()
 
 # Sets a user's trade preference
-@api_router.post("set_preference")
+@api_router.post("/set_preference")
 def set_preference(request: TradePreferenceRequest, user_id: int = Depends(JWT_get_user)):
 
     db = get_db()

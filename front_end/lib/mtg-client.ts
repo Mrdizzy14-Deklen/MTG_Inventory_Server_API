@@ -145,7 +145,7 @@ export interface BulkResponse {
 
 export async function addBulk(cards: BulkCardInput[]): Promise<BulkResponse> {
   console.log(JSON.stringify(cards));
-  return fetchWithAuth('add_bulk', {
+  return fetchWithAuth('/add_bulk', {
     method: "POST",
     body: JSON.stringify({ cards }),
   });
