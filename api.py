@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()  # Load environment variables from .env file
 import os
-from fastapi import FastAPI, HTTPException, Request, Security, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Request, Security, Depends, BackgroundTasks, APIRouter
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.responses import Response, HTMLResponse
 from fastapi.security import OAuth2PasswordBearer
@@ -34,7 +34,9 @@ def verify_api_key(key: str = Security(api_key_header)):
         raise HTTPException(status_code=403, detail="Invalid API Key")
     return key
 
-app = FastAPI(dependencies=[Depends(verify_api_key)])
+app = FastAPI()
+
+api_router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 app.add_middleware(
     CORSMiddleware,
@@ -128,6 +130,522 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         return user_id
     except:
         raise HTTPException(status_code=401, detail="Could not validate credentials")
+
+class UserLoginRequest(BaseModel):
+    username: str
+    password: str
+
+@api_router.post("/users/login")
+def login_user(request: UserLoginRequest):
+
+    user = get_user(request.username)
+
+    if not user:
+        raise HTTPException(status_code=400, detail="User not found.")
+
+    if not user.get('is_active'):
+        raise HTTPException(status_code=403, detail="Account is suspended or inactive.")
+
+    if not verify_password(request.password, user['password_hash']):
+        raise HTTPException(status_code=400, detail="Invalid password.")
+    
+    token = create_access_token(data={"user_id": user['id']})
+    notify_me(f"User logged in: {request.username}")
+    return {"access_token": token, "token_type": "bearer", "user_id": user['id']}
+
+class SingleCardRequest(BaseModel):
+    text: str
+    quantity: int = 1
+
+# Import individual cards
+@api_router.post("/import/card")
+def add_card(request: SingleCardRequest, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    with db.cursor(dictionary=True) as cursor:
+        try:
+
+            if request.quantity < 1:
+                raise HTTPException(status_code=400, detail="Quantity must be at least 1.")
+
+            # Find card in reference table
+            query_ref = "SELECT * FROM ref_cards WHERE card_name = %s LIMIT 1"
+            cursor.execute(query_ref, (request.text,))
+            ref_entry = cursor.fetchone()
+
+            if not ref_entry:
+                # Card not found
+                raise HTTPException(status_code=400, detail=f"Card '{request.text}' not found.")
+            
+            oracle_id = ref_entry['oracle_id']
+
+            sql = """
+                INSERT INTO inventory (
+                user_id, 
+                oracle_id, 
+                quantity
+                ) 
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
+            """
+
+            cursor.execute(sql, (
+                user_id,
+                oracle_id,
+                request.quantity
+            ))
+
+            db.commit()
+
+            notify_me(f"User {user_id} added {request.quantity}x '{request.text}' to inventory.")
+
+            return {
+                "status": "success",
+                "message": f"Added {request.quantity}x '{request.text}' to inventory for user {user_id}."
+            }
+        
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Database update failed.")
+        finally:
+            db.close()
+
+class MoveCardRequest(BaseModel):
+    text: str
+    to_username: str
+    quantity: int = 1
+
+# Move a card between users
+@api_router.post("/trade/card")
+def move_card(request: MoveCardRequest, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    with db.cursor(dictionary=True) as cursor:
+        try:
+            # Get current quantity for from_user
+            query_from = """
+                SELECT i.oracle_id, i.quantity 
+                FROM inventory i
+                JOIN ref_cards r ON i.oracle_id = r.oracle_id
+                WHERE r.card_name = %s AND i.user_id = %s
+            """
+            cursor.execute(query_from, (request.text, user_id))
+            item_from = cursor.fetchone()
+
+            if not item_from or item_from['quantity'] < request.quantity:
+                raise HTTPException(status_code=400, detail="Not enough cards.")
+
+            oracle_id = item_from['oracle_id']
+
+            # Decrement from_user
+            cursor.execute(
+                "UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s",
+                (request.quantity, user_id, oracle_id)
+            )
+
+            # Increment to_user
+            sql_to = """
+                INSERT INTO inventory (user_id, oracle_id, quantity) 
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
+            """
+            cursor.execute(sql_to, (get_user(request.to_username)['id'], oracle_id, request.quantity))
+
+            db.commit()
+            notify_me(f"User {user_id} moved {request.quantity}x '{request.text}' to {request.to_username}.")
+            return {"status": "success", "message": f"Moved {request.quantity}x '{request.text}' to {request.to_username}."}
+
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Database update failed.")
+        finally:
+            db.close()
+
+# Remove individual cards
+@api_router.post("/remove/card")
+def remove_card(request: SingleCardRequest, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    with db.cursor(dictionary=True) as cursor:
+        try:
+            # Get current quantity
+            query = """
+                SELECT i.oracle_id, i.quantity 
+                FROM inventory i
+                JOIN ref_cards r ON i.oracle_id = r.oracle_id
+                WHERE r.card_name = %s AND i.user_id = %s
+            """
+            cursor.execute(query, (request.text, user_id))
+            item = cursor.fetchone()
+
+            if not item:
+                raise HTTPException(status_code=404, detail="Card not found in your inventory.")
+
+            current_qty = item['quantity']
+            oracle_id = item['oracle_id']
+
+            # Check if need to remove row
+            if current_qty <= request.quantity:
+                cursor.execute(
+                    "DELETE FROM inventory WHERE user_id = %s AND oracle_id = %s",
+                    (user_id, oracle_id)
+                )
+                message = f"Removed all copies of '{request.text}' from inventory."
+            else:
+                # Decrement
+                cursor.execute(
+                    "UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s",
+                    (request.quantity, user_id, oracle_id)
+                )
+                message = f"Removed {request.quantity}x '{request.text}'. New total: {current_qty - request.quantity}."
+
+            db.commit()
+
+            notify_me(f"User {user_id} removed {request.quantity}x '{request.text}' from inventory.")
+
+            return {"status": "success", "message": message}
+
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Database update failed.")
+        finally:
+            db.close()
+
+class CardRequest(BaseModel):
+    name: str
+    quantity: int = 1
+
+class BulkCardRequest(BaseModel):
+    cards: List[CardRequest]
+
+# Import bulk cards
+@api_router.post("/import/bulk")
+def add_bulk(request: BulkCardRequest, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    with db.cursor(dictionary=True) as cursor:
+        try:
+
+            card_quantities = {}
+            for card in request.cards:
+                card_quantities[card.name] = card_quantities.get(card.name, 0) + card.quantity
+            
+            card_names = list(card_quantities.keys())
+
+            if not card_names:
+                return {"status": "success", "message": "No cards provided."}
+
+            placeholders = ', '.join(['%s'] * len(card_names))
+            
+            query = f"SELECT card_name, oracle_id FROM ref_cards WHERE card_name IN ({placeholders})"
+            
+            cursor.execute(query, tuple(card_names))
+            
+            ref_map = {row['card_name']: row['oracle_id'] for row in cursor.fetchall()}
+
+            missing_cards = [name for name in card_names if name not in ref_map]
+
+            if missing_cards:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Import aborted. Cards not found in database: {', '.join(missing_cards)}"
+                )
+
+            insert_data = []
+            total_cards_added = 0
+            
+            for name, qty in card_quantities.items():
+                if name in ref_map:
+                    insert_data.append((user_id, ref_map[name], qty))
+                    total_cards_added += qty
+
+            if not insert_data:
+                 return {"status": "success", "message": "No valid cards found to add."}
+
+            sql = """
+                INSERT INTO inventory (user_id, oracle_id, quantity) 
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
+            """
+            
+            cursor.executemany(sql, insert_data)
+
+            db.commit()
+
+            notify_me(f"User {user_id} added {total_cards_added} cards in bulk.")
+
+            return {"status": "success", "message": f"Added {total_cards_added} cards."}
+        except Exception as e:
+            db.rollback()
+            raise e
+        finally:
+            db.close()
+
+class MoveBulkCardRequest(BaseModel):
+    to_username: str
+    cards: List[CardRequest]
+
+# Move bulk cards between users
+@api_router.post("/trade/bulk")
+def move_bulk(request: MoveBulkCardRequest, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    with db.cursor(dictionary=True) as cursor:
+        count = 0
+        try:
+            for card in request.cards:
+                # Get current quantity for from_user
+                query_from = """
+                    SELECT i.oracle_id, i.quantity 
+                    FROM inventory i
+                    JOIN ref_cards r ON i.oracle_id = r.oracle_id
+                    WHERE r.card_name = %s AND i.user_id = %s
+                """
+                cursor.execute(query_from, (card.name, user_id))
+                item_from = cursor.fetchone()
+
+                if item_from and item_from['quantity'] >= card.quantity:
+                    oracle_id = item_from['oracle_id']
+
+                    # Decrement from_user
+                    cursor.execute(
+                        "UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s",
+                        (card.quantity, user_id, oracle_id)
+                    )
+
+                    # Increment to_user
+                    sql_to = """
+                        INSERT INTO inventory (user_id, oracle_id, quantity) 
+                        VALUES (%s, %s, %s)
+                        ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
+                    """
+                    cursor.execute(sql_to, (get_user(request.to_username)['id'], oracle_id, card.quantity))
+                    count += 1
+
+            db.commit()
+
+            notify_me(f"User {user_id} moved {count} cards in bulk to {request.to_username}.")
+
+            return {"status": "success", "message": f"Moved {count} cards."}
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Database update failed.")
+        finally:
+            db.close()
+
+# Remove bulk cards
+@api_router.post("/remove/bulk")
+def remove_bulk(request: BulkCardRequest, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    removed_count = 0
+
+    try:
+        for card in request.cards:
+            # Get current quantity
+            query = """
+                SELECT i.oracle_id, i.quantity FROM inventory i
+                JOIN ref_cards r ON i.oracle_id = r.oracle_id
+                WHERE r.card_name = %s AND i.user_id = %s
+            """
+            cursor.execute(query, (card.name, user_id))
+            item = cursor.fetchone()
+
+            if item:
+                if item['quantity'] <= card.quantity:
+                    cursor.execute("DELETE FROM inventory WHERE user_id = %s AND oracle_id = %s", 
+                                   (user_id, item['oracle_id']))
+                else:
+                    cursor.execute("UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s", 
+                                   (card.quantity, user_id, item['oracle_id']))
+                removed_count += 1
+
+        db.commit()
+        
+        notify_me(f"User {user_id} removed {removed_count} cards in bulk.")
+
+        return {"status": "success", "message": f"Removed {removed_count} cards."}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database update failed.")
+    finally:
+        db.close()
+
+@api_router.get("/inventory/user")
+def view_inventory(user_id: int = Depends(get_current_user)):
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+
+    try:
+        query = """
+            SELECT r.oracle_id, r.card_name, i.quantity 
+            FROM inventory i
+            JOIN ref_cards r ON i.oracle_id = r.oracle_id
+            WHERE i.user_id = %s
+        """
+        cursor.execute(query, (user_id,))
+        items = cursor.fetchall()
+        return {"status": "success", "inventory": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Database query failed.")
+    finally:
+        cursor.close()
+        db.close()
+
+
+class CardSearchRequest(BaseModel):
+    card_name: Optional[str] = None
+    type_line: Optional[str] = None
+    mana_cost: Optional[int] = None
+    rarity: Optional[str] = None
+    text_box: Optional[str] = None
+    power: Optional[str] = None
+    toughness: Optional[str] = None
+    w: Optional[bool] = None
+    u: Optional[bool] = None
+    b: Optional[bool] = None
+    r: Optional[bool] = None
+    g: Optional[bool] = None
+    owned: Optional[bool] = False
+
+# Updated route name to reflect global search
+@api_router.post("/search/cards")
+def search_cards(request: CardSearchRequest, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    with db.cursor(dictionary=True) as cursor:
+        try:
+            # We select from ref_cards, and LEFT JOIN the specific user's inventory
+            # COALESCE turns NULL quantities (unowned cards) into 0
+            query = """
+                SELECT 
+                    r.oracle_id, r.card_name, r.type_line, r.mana_cost, 
+                    r.rarity, r.text_box, r.power, r.toughness, 
+                    r.w, r.u, r.b, r.r, r.g, 
+                    COALESCE(i.quantity, 0) as quantity 
+                FROM ref_cards r
+                LEFT JOIN inventory i ON r.oracle_id = i.oracle_id AND i.user_id = %s
+                WHERE 1=1
+            """
+            params = [user_id]
+
+            # --- The Owned Filter ---
+            if request.owned:
+                query += " AND i.quantity > 0"
+
+            # --- Fuzzy Searches (LIKE) ---
+            if request.card_name:
+                query += " AND r.card_name LIKE %s"
+                params.append(f"%{request.card_name}%")
+            if request.type_line:
+                query += " AND r.type_line LIKE %s"
+                params.append(f"%{request.type_line}%")
+            if request.text_box:
+                query += " AND r.text_box LIKE %s"
+                params.append(f"%{request.text_box}%")
+
+            # --- Exact Matches ---
+            if request.mana_cost is not None:
+                query += " AND r.mana_cost = %s"
+                params.append(request.mana_cost)
+            if request.rarity:
+                query += " AND r.rarity = %s"
+                params.append(request.rarity)
+            if request.power:
+                query += " AND r.power = %s"
+                params.append(request.power)
+            if request.toughness:
+                query += " AND r.toughness = %s"
+                params.append(request.toughness)
+
+            # --- Color Identity (Booleans) ---
+            if request.w is not None:
+                query += " AND r.w = %s"
+                params.append(request.w)
+            if request.u is not None:
+                query += " AND r.u = %s"
+                params.append(request.u)
+            if request.b is not None:
+                query += " AND r.b = %s"
+                params.append(request.b)
+            if request.r is not None:
+                query += " AND r.r = %s"
+                params.append(request.r)
+            if request.g is not None:
+                query += " AND r.g = %s"
+                params.append(request.g)
+
+            cursor.execute(query, tuple(params))
+            results = cursor.fetchall()
+
+            return {"status": "success", "cards": results}
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
+        finally:
+            db.close()
+
+# Fetch card image by oracle_id
+@api_router.get("/cards/image/{oracle_id}")
+def get_card_image(oracle_id: str):
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT image_data FROM ref_cards WHERE oracle_id = %s", (oracle_id,))
+        result = cursor.fetchone()
+        
+        if not result or not result['image_data']:
+            raise HTTPException(status_code=404, detail="Image not found")
+        
+        return Response(content=result['image_data'], media_type="image/jpeg") 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Database query failed.")
+    finally:
+        cursor.close()
+        db.close()
+
+class TradePreferenceRequest(BaseModel):
+    oracle_id: str = None   # Specific card
+    tag: str = None         # Title for preference
+    status: str             # 'for_trade', 'looking_for', 'not_for_trade'
+    notes: str = ""
+
+@api_router.post("/trade/preference/set")
+def set_trade_preference(request: TradePreferenceRequest, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    with db.cursor() as cursor:
+        try:
+            sql = """
+                INSERT INTO trade_preferences (user_id, oracle_id, tag, trade_status, notes)
+                VALUES (%s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE  oracle_id = VALUES(oracle_id), tag = VALUES(tag), trade_status = VALUES(trade_status), notes = VALUES(notes)
+            """
+            cursor.execute(sql, (user_id, request.oracle_id, request.tag, request.status, request.notes))
+            db.commit()
+            return {"status": "success", "message": "Trade preference updated."}
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Failed to save preference.")
+        finally:
+            db.close()
+
+@api_router.post("/trade/preference/remove")
+def remove_trade_preference(request: TradePreferenceRequest, user_id: int = Depends(get_current_user)):
+    db = get_db()
+    with db.cursor() as cursor:
+        try:
+            sql = """
+                DELETE FROM trade_preferences 
+                WHERE user_id = %s 
+                AND (oracle_id <=> %s) 
+                AND (tag <=> %s)
+            """
+            cursor.execute(sql, (user_id, request.oracle_id, request.tag))
+            db.commit()
+            return {"status": "success", "message": "Trade preference removed."}
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Failed to save preference.")
+        finally:
+            db.close()
+
+app.include_router(api_router)
+
+# --- Public Routes ---
 
 # Used to limit API usage to prevent abuse
 limiter = Limiter(key_func=get_remote_address)
@@ -235,517 +753,6 @@ def verify_account(token: str):
         finally:
             db.close()
 
-class UserLoginRequest(BaseModel):
-    username: str
-    password: str
-
-@app.post("/users/login")
-def login_user(request: UserLoginRequest):
-
-    user = get_user(request.username)
-
-    if not user:
-        raise HTTPException(status_code=400, detail="User not found.")
-
-    if not user.get('is_active'):
-        raise HTTPException(status_code=403, detail="Account is suspended or inactive.")
-
-    if not verify_password(request.password, user['password_hash']):
-        raise HTTPException(status_code=400, detail="Invalid password.")
-    
-    token = create_access_token(data={"user_id": user['id']})
-    notify_me(f"User logged in: {request.username}")
-    return {"access_token": token, "token_type": "bearer", "user_id": user['id']}
-
-class SingleCardRequest(BaseModel):
-    text: str
-    quantity: int = 1
-
-# Import individual cards
-@app.post("/import/card")
-def add_card(request: SingleCardRequest, user_id: int = Depends(get_current_user)):
-    db = get_db()
-    with db.cursor(dictionary=True) as cursor:
-        try:
-
-            if request.quantity < 1:
-                raise HTTPException(status_code=400, detail="Quantity must be at least 1.")
-
-            # Find card in reference table
-            query_ref = "SELECT * FROM ref_cards WHERE card_name = %s LIMIT 1"
-            cursor.execute(query_ref, (request.text,))
-            ref_entry = cursor.fetchone()
-
-            if not ref_entry:
-                # Card not found
-                raise HTTPException(status_code=400, detail=f"Card '{request.text}' not found.")
-            
-            oracle_id = ref_entry['oracle_id']
-
-            sql = """
-                INSERT INTO inventory (
-                user_id, 
-                oracle_id, 
-                quantity
-                ) 
-                VALUES (%s, %s, %s)
-                ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
-            """
-
-            cursor.execute(sql, (
-                user_id,
-                oracle_id,
-                request.quantity
-            ))
-
-            db.commit()
-
-            notify_me(f"User {user_id} added {request.quantity}x '{request.text}' to inventory.")
-
-            return {
-                "status": "success",
-                "message": f"Added {request.quantity}x '{request.text}' to inventory for user {user_id}."
-            }
-        
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(status_code=500, detail="Database update failed.")
-        finally:
-            db.close()
-
-class MoveCardRequest(BaseModel):
-    text: str
-    to_username: str
-    quantity: int = 1
-
-# Move a card between users
-@app.post("/trade/card")
-def move_card(request: MoveCardRequest, user_id: int = Depends(get_current_user)):
-    db = get_db()
-    with db.cursor(dictionary=True) as cursor:
-        try:
-            # Get current quantity for from_user
-            query_from = """
-                SELECT i.oracle_id, i.quantity 
-                FROM inventory i
-                JOIN ref_cards r ON i.oracle_id = r.oracle_id
-                WHERE r.card_name = %s AND i.user_id = %s
-            """
-            cursor.execute(query_from, (request.text, user_id))
-            item_from = cursor.fetchone()
-
-            if not item_from or item_from['quantity'] < request.quantity:
-                raise HTTPException(status_code=400, detail="Not enough cards.")
-
-            oracle_id = item_from['oracle_id']
-
-            # Decrement from_user
-            cursor.execute(
-                "UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s",
-                (request.quantity, user_id, oracle_id)
-            )
-
-            # Increment to_user
-            sql_to = """
-                INSERT INTO inventory (user_id, oracle_id, quantity) 
-                VALUES (%s, %s, %s)
-                ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
-            """
-            cursor.execute(sql_to, (get_user(request.to_username)['id'], oracle_id, request.quantity))
-
-            db.commit()
-            notify_me(f"User {user_id} moved {request.quantity}x '{request.text}' to {request.to_username}.")
-            return {"status": "success", "message": f"Moved {request.quantity}x '{request.text}' to {request.to_username}."}
-
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(status_code=500, detail="Database update failed.")
-        finally:
-            db.close()
-
-# Remove individual cards
-@app.post("/remove/card")
-def remove_card(request: SingleCardRequest, user_id: int = Depends(get_current_user)):
-    db = get_db()
-    with db.cursor(dictionary=True) as cursor:
-        try:
-            # Get current quantity
-            query = """
-                SELECT i.oracle_id, i.quantity 
-                FROM inventory i
-                JOIN ref_cards r ON i.oracle_id = r.oracle_id
-                WHERE r.card_name = %s AND i.user_id = %s
-            """
-            cursor.execute(query, (request.text, user_id))
-            item = cursor.fetchone()
-
-            if not item:
-                raise HTTPException(status_code=404, detail="Card not found in your inventory.")
-
-            current_qty = item['quantity']
-            oracle_id = item['oracle_id']
-
-            # Check if need to remove row
-            if current_qty <= request.quantity:
-                cursor.execute(
-                    "DELETE FROM inventory WHERE user_id = %s AND oracle_id = %s",
-                    (user_id, oracle_id)
-                )
-                message = f"Removed all copies of '{request.text}' from inventory."
-            else:
-                # Decrement
-                cursor.execute(
-                    "UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s",
-                    (request.quantity, user_id, oracle_id)
-                )
-                message = f"Removed {request.quantity}x '{request.text}'. New total: {current_qty - request.quantity}."
-
-            db.commit()
-
-            notify_me(f"User {user_id} removed {request.quantity}x '{request.text}' from inventory.")
-
-            return {"status": "success", "message": message}
-
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(status_code=500, detail="Database update failed.")
-        finally:
-            db.close()
-
-class CardRequest(BaseModel):
-    name: str
-    quantity: int = 1
-
-class BulkCardRequest(BaseModel):
-    cards: List[CardRequest]
-
-# Import bulk cards
-@app.post("/import/bulk")
-def add_bulk(request: BulkCardRequest, user_id: int = Depends(get_current_user)):
-    db = get_db()
-    with db.cursor(dictionary=True) as cursor:
-        try:
-
-            card_quantities = {}
-            for card in request.cards:
-                card_quantities[card.name] = card_quantities.get(card.name, 0) + card.quantity
-            
-            card_names = list(card_quantities.keys())
-
-            if not card_names:
-                return {"status": "success", "message": "No cards provided."}
-
-            placeholders = ', '.join(['%s'] * len(card_names))
-            
-            query = f"SELECT card_name, oracle_id FROM ref_cards WHERE card_name IN ({placeholders})"
-            
-            cursor.execute(query, tuple(card_names))
-            
-            ref_map = {row['card_name']: row['oracle_id'] for row in cursor.fetchall()}
-
-            missing_cards = [name for name in card_names if name not in ref_map]
-
-            if missing_cards:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Import aborted. Cards not found in database: {', '.join(missing_cards)}"
-                )
-
-            insert_data = []
-            total_cards_added = 0
-            
-            for name, qty in card_quantities.items():
-                if name in ref_map:
-                    insert_data.append((user_id, ref_map[name], qty))
-                    total_cards_added += qty
-
-            if not insert_data:
-                 return {"status": "success", "message": "No valid cards found to add."}
-
-            sql = """
-                INSERT INTO inventory (user_id, oracle_id, quantity) 
-                VALUES (%s, %s, %s)
-                ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
-            """
-            
-            cursor.executemany(sql, insert_data)
-
-            db.commit()
-
-            notify_me(f"User {user_id} added {total_cards_added} cards in bulk.")
-
-            return {"status": "success", "message": f"Added {total_cards_added} cards."}
-        except Exception as e:
-            db.rollback()
-            raise e
-        finally:
-            db.close()
-
-class MoveBulkCardRequest(BaseModel):
-    to_username: str
-    cards: List[CardRequest]
-
-# Move bulk cards between users
-@app.post("/trade/bulk")
-def move_bulk(request: MoveBulkCardRequest, user_id: int = Depends(get_current_user)):
-    db = get_db()
-    with db.cursor(dictionary=True) as cursor:
-        count = 0
-        try:
-            for card in request.cards:
-                # Get current quantity for from_user
-                query_from = """
-                    SELECT i.oracle_id, i.quantity 
-                    FROM inventory i
-                    JOIN ref_cards r ON i.oracle_id = r.oracle_id
-                    WHERE r.card_name = %s AND i.user_id = %s
-                """
-                cursor.execute(query_from, (card.name, user_id))
-                item_from = cursor.fetchone()
-
-                if item_from and item_from['quantity'] >= card.quantity:
-                    oracle_id = item_from['oracle_id']
-
-                    # Decrement from_user
-                    cursor.execute(
-                        "UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s",
-                        (card.quantity, user_id, oracle_id)
-                    )
-
-                    # Increment to_user
-                    sql_to = """
-                        INSERT INTO inventory (user_id, oracle_id, quantity) 
-                        VALUES (%s, %s, %s)
-                        ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
-                    """
-                    cursor.execute(sql_to, (get_user(request.to_username)['id'], oracle_id, card.quantity))
-                    count += 1
-
-            db.commit()
-
-            notify_me(f"User {user_id} moved {count} cards in bulk to {request.to_username}.")
-
-            return {"status": "success", "message": f"Moved {count} cards."}
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(status_code=500, detail="Database update failed.")
-        finally:
-            db.close()
-
-# Remove bulk cards
-@app.post("/remove/bulk")
-def remove_bulk(request: BulkCardRequest, user_id: int = Depends(get_current_user)):
-    db = get_db()
-    cursor = db.cursor(dictionary=True)
-    removed_count = 0
-
-    try:
-        for card in request.cards:
-            # Get current quantity
-            query = """
-                SELECT i.oracle_id, i.quantity FROM inventory i
-                JOIN ref_cards r ON i.oracle_id = r.oracle_id
-                WHERE r.card_name = %s AND i.user_id = %s
-            """
-            cursor.execute(query, (card.name, user_id))
-            item = cursor.fetchone()
-
-            if item:
-                if item['quantity'] <= card.quantity:
-                    cursor.execute("DELETE FROM inventory WHERE user_id = %s AND oracle_id = %s", 
-                                   (user_id, item['oracle_id']))
-                else:
-                    cursor.execute("UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND oracle_id = %s", 
-                                   (card.quantity, user_id, item['oracle_id']))
-                removed_count += 1
-
-        db.commit()
-        
-        notify_me(f"User {user_id} removed {removed_count} cards in bulk.")
-
-        return {"status": "success", "message": f"Removed {removed_count} cards."}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Database update failed.")
-    finally:
-        db.close()
-
-@app.get("/inventory/user")
-def view_inventory(user_id: int = Depends(get_current_user)):
-    db = get_db()
-    cursor = db.cursor(dictionary=True)
-
-    try:
-        query = """
-            SELECT r.oracle_id, r.card_name, i.quantity 
-            FROM inventory i
-            JOIN ref_cards r ON i.oracle_id = r.oracle_id
-            WHERE i.user_id = %s
-        """
-        cursor.execute(query, (user_id,))
-        items = cursor.fetchall()
-        return {"status": "success", "inventory": items}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Database query failed.")
-    finally:
-        cursor.close()
-        db.close()
-
-
-class CardSearchRequest(BaseModel):
-    card_name: Optional[str] = None
-    type_line: Optional[str] = None
-    mana_cost: Optional[int] = None
-    rarity: Optional[str] = None
-    text_box: Optional[str] = None
-    power: Optional[str] = None
-    toughness: Optional[str] = None
-    w: Optional[bool] = None
-    u: Optional[bool] = None
-    b: Optional[bool] = None
-    r: Optional[bool] = None
-    g: Optional[bool] = None
-    owned: Optional[bool] = False
-
-# Updated route name to reflect global search
-@app.post("/search/cards")
-def search_cards(request: CardSearchRequest, user_id: int = Depends(get_current_user)):
-    db = get_db()
-    with db.cursor(dictionary=True) as cursor:
-        try:
-            # We select from ref_cards, and LEFT JOIN the specific user's inventory
-            # COALESCE turns NULL quantities (unowned cards) into 0
-            query = """
-                SELECT 
-                    r.oracle_id, r.card_name, r.type_line, r.mana_cost, 
-                    r.rarity, r.text_box, r.power, r.toughness, 
-                    r.w, r.u, r.b, r.r, r.g, 
-                    COALESCE(i.quantity, 0) as quantity 
-                FROM ref_cards r
-                LEFT JOIN inventory i ON r.oracle_id = i.oracle_id AND i.user_id = %s
-                WHERE 1=1
-            """
-            params = [user_id]
-
-            # --- The Owned Filter ---
-            if request.owned:
-                query += " AND i.quantity > 0"
-
-            # --- Fuzzy Searches (LIKE) ---
-            if request.card_name:
-                query += " AND r.card_name LIKE %s"
-                params.append(f"%{request.card_name}%")
-            if request.type_line:
-                query += " AND r.type_line LIKE %s"
-                params.append(f"%{request.type_line}%")
-            if request.text_box:
-                query += " AND r.text_box LIKE %s"
-                params.append(f"%{request.text_box}%")
-
-            # --- Exact Matches ---
-            if request.mana_cost is not None:
-                query += " AND r.mana_cost = %s"
-                params.append(request.mana_cost)
-            if request.rarity:
-                query += " AND r.rarity = %s"
-                params.append(request.rarity)
-            if request.power:
-                query += " AND r.power = %s"
-                params.append(request.power)
-            if request.toughness:
-                query += " AND r.toughness = %s"
-                params.append(request.toughness)
-
-            # --- Color Identity (Booleans) ---
-            if request.w is not None:
-                query += " AND r.w = %s"
-                params.append(request.w)
-            if request.u is not None:
-                query += " AND r.u = %s"
-                params.append(request.u)
-            if request.b is not None:
-                query += " AND r.b = %s"
-                params.append(request.b)
-            if request.r is not None:
-                query += " AND r.r = %s"
-                params.append(request.r)
-            if request.g is not None:
-                query += " AND r.g = %s"
-                params.append(request.g)
-
-            cursor.execute(query, tuple(params))
-            results = cursor.fetchall()
-
-            return {"status": "success", "cards": results}
-
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
-        finally:
-            db.close()
-
-# Fetch card image by oracle_id
-@app.get("/cards/image/{oracle_id}")
-def get_card_image(oracle_id: str):
-    db = get_db()
-    cursor = db.cursor(dictionary=True)
-    try:
-        cursor.execute("SELECT image_data FROM ref_cards WHERE oracle_id = %s", (oracle_id,))
-        result = cursor.fetchone()
-        
-        if not result or not result['image_data']:
-            raise HTTPException(status_code=404, detail="Image not found")
-        
-        return Response(content=result['image_data'], media_type="image/jpeg") 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Database query failed.")
-    finally:
-        cursor.close()
-        db.close()
-
-class TradePreferenceRequest(BaseModel):
-    oracle_id: str = None   # Specific card
-    tag: str = None         # Title for preference
-    status: str             # 'for_trade', 'looking_for', 'not_for_trade'
-    notes: str = ""
-
-@app.post("/trade/preference/set")
-def set_trade_preference(request: TradePreferenceRequest, user_id: int = Depends(get_current_user)):
-    db = get_db()
-    with db.cursor() as cursor:
-        try:
-            sql = """
-                INSERT INTO trade_preferences (user_id, oracle_id, tag, trade_status, notes)
-                VALUES (%s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE  oracle_id = VALUES(oracle_id), tag = VALUES(tag), trade_status = VALUES(trade_status), notes = VALUES(notes)
-            """
-            cursor.execute(sql, (user_id, request.oracle_id, request.tag, request.status, request.notes))
-            db.commit()
-            return {"status": "success", "message": "Trade preference updated."}
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(status_code=500, detail="Failed to save preference.")
-        finally:
-            db.close()
-
-@app.post("/trade/preference/remove")
-def remove_trade_preference(request: TradePreferenceRequest, user_id: int = Depends(get_current_user)):
-    db = get_db()
-    with db.cursor() as cursor:
-        try:
-            sql = """
-                DELETE FROM trade_preferences 
-                WHERE user_id = %s 
-                AND (oracle_id <=> %s) 
-                AND (tag <=> %s)
-            """
-            cursor.execute(sql, (user_id, request.oracle_id, request.tag))
-            db.commit()
-            return {"status": "success", "message": "Trade preference removed."}
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(status_code=500, detail="Failed to save preference.")
-        finally:
-            db.close()
 
 # Honey pot to detect bots
 @app.get("/.env")
