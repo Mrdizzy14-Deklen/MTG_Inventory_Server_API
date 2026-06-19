@@ -35,7 +35,7 @@ export default function Page() {
 
       let result = 0;
 
-      if (sortBy === 'cmc') {
+      if (sortBy === 'mana_cost') {
         const cmcA = a.mana_cost || 0;
         const cmcB = b.mana_cost || 0;
         if (cmcA !== cmcB) {
@@ -116,7 +116,7 @@ export default function Page() {
     colors: [], colorMatch: 'exact', 
     commanderIdentity: [], 
     type: '', 
-    cmc: '', cmcOperator: '=',
+    mana_cost: '', mana_costOperator: '=',
     rarity: [], 
     text: '', 
     power: '', powerOperator: '=',
@@ -134,9 +134,9 @@ export default function Page() {
         apiFilters.quantity_operator = sidebarFilters.quantityOperator;
         apiFilters.quantity = parseInt(sidebarFilters.quantity, 10);
       }
-      if (sidebarFilters.cmc !== '') {
-        apiFilters.cmc_operator = sidebarFilters.cmcOperator;
-        apiFilters.cmc = parseInt(sidebarFilters.cmc, 10);
+      if (sidebarFilters.mana_cost !== '') {
+        apiFilters.mana_cost_operator = sidebarFilters.mana_costOperator;
+        apiFilters.mana_cost = parseInt(sidebarFilters.mana_cost, 10);
       }
       if (sidebarFilters.power !== '') {
         apiFilters.power_operator = sidebarFilters.powerOperator;
@@ -273,7 +273,7 @@ export default function Page() {
               >
                 <option value="name">Name</option>
                 <option value="color">Color</option>
-                <option value="cmc">CMC</option>
+                <option value="mana_cost">CMC</option>
               </select>
               <select
                 id="sort-order"

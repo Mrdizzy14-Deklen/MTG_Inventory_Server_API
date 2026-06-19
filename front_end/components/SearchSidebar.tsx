@@ -17,8 +17,8 @@ export interface SearchFilters {
   text: string;
   quantityOperator: string;
   quantity: string;
-  cmcOperator: string;
-  cmc: string;
+  mana_costOperator: string;
+  mana_cost: string;
   powerOperator: string;
   power: string;
   toughnessOperator: string;
@@ -44,8 +44,8 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
     text: '',
     quantityOperator: '>=',
     quantity: '',
-    cmcOperator: '=',
-    cmc: '',
+    mana_costOperator: '=',
+    mana_cost: '',
     powerOperator: '=',
     power: '',
     toughnessOperator: '=',
@@ -178,12 +178,12 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
 
         {/* CMC */}
         <div className="space-y-2">
-          <Label htmlFor="cmc" className="text-sm font-semibold">CMC</Label>
+          <Label htmlFor="mana_cost" className="text-sm font-semibold">CMC</Label>
           <div className="flex gap-2">
             <select
               className="flex h-9 w-16 rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              value={filters.cmcOperator}
-              onChange={(e) => setFilters(prev => ({ ...prev, cmcOperator: e.target.value }))}
+              value={filters.mana_costOperator}
+              onChange={(e) => setFilters(prev => ({ ...prev, mana_costOperator: e.target.value }))}
             >
               <option value="=">=</option>
               <option value=">=">&ge;</option>
@@ -192,15 +192,15 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
               <option value="<">&lt;</option>
             </select>
             <Input
-              id="cmc"
+              id="mana_cost"
               type="number"
               min="0"
               placeholder="0"
-              value={filters.cmc}
+              value={filters.mana_cost}
               onChange={(e) => {
                 const val = e.target.value;
                 if (val !== '' && parseInt(val) < 0) return;
-                setFilters(prev => ({ ...prev, cmc: val }));
+                setFilters(prev => ({ ...prev, mana_cost: val }));
               }}
               className="bg-background border-border text-foreground flex-1"
             />
