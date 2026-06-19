@@ -135,8 +135,8 @@ export default function Page() {
         apiFilters.quantity = parseInt(sidebarFilters.quantity, 10);
       }
       if (sidebarFilters.cmc !== '') {
-        apiFilters.mana_cost_operator = sidebarFilters.cmcOperator;
-        apiFilters.mana_cost = parseInt(sidebarFilters.cmc, 10);
+        apiFilters.cmc_operator = sidebarFilters.cmcOperator;
+        apiFilters.cmc = parseInt(sidebarFilters.cmc, 10);
       }
       if (sidebarFilters.power !== '') {
         apiFilters.power_operator = sidebarFilters.powerOperator;
