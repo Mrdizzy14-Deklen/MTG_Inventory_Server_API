@@ -53,10 +53,6 @@ CREATE TABLE IF NOT EXISTS trade_preferences (
     UNIQUE KEY unique_user_pref (user_id, oracle_id, tag)
 );
 
--- 2026-03-30
-ALTER TABLE ref_cards
-ADD image_data MEDIUMBLOB NOT NULL;
-
 -- 2026-06-18
 ALTER TABLE users
 ADD discord_handle VARCHAR(100),
