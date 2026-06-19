@@ -1,0 +1,229 @@
+'use client';
+
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+
+export interface SearchFilters {
+  colors: string[];
+  commanderIdentity: string[];
+  type: string;
+  cmc: string;
+  rarity: string[];
+  text: string;
+  power: string;
+  toughness: string;
+}
+
+interface SearchSidebarProps {
+  onSearch: (filters: SearchFilters) => void;
+  isLoading?: boolean;
+}
+
+const COLORS = ['White', 'Blue', 'Black', 'Red', 'Green'];
+const COMMANDER_IDENTITY = ['White', 'Blue', 'Black', 'Red', 'Green', 'Colorless'];
+const RARITIES = ['Common', 'Uncommon', 'Rare', 'Mythic'];
+
+export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProps) {
+  const [filters, setFilters] = useState<SearchFilters>({
+    colors: [],
+    commanderIdentity: [],
+    type: '',
+    cmc: '',
+    rarity: [],
+    text: '',
+    power: '',
+    toughness: '',
+  });
+
+  const toggleColor = (color: string) => {
+    setFilters((prev) => ({
+      ...prev,
+      colors: prev.colors.includes(color)
+        ? prev.colors.filter((c) => c !== color)
+        : [...prev.colors, color],
+    }));
+  };
+
+  const toggleCommanderIdentity = (color: string) => {
+    setFilters((prev) => ({
+      ...prev,
+      commanderIdentity: prev.commanderIdentity.includes(color)
+        ? prev.commanderIdentity.filter((c) => c !== color)
+        : [...prev.commanderIdentity, color],
+    }));
+  };
+
+  const handleSearch = () => {
+    onSearch(filters);
+  };
+
+  return (
+    <aside className="w-64 bg-card border-r border-border p-6 overflow-y-auto max-h-screen">
+      <div className="space-y-6">
+        {/* Search Button at top */}
+        <Button
+          onClick={handleSearch}
+          disabled={isLoading}
+          className="w-full bg-indigo-600 text-white hover:bg-indigo-700"
+        >
+          {isLoading ? 'Searching...' : 'Search'}
+        </Button>
+
+        {/* Colors */}
+        <div className="space-y-3">
+          <h3 className="font-semibold text-foreground text-sm">Colors</h3>
+          <div className="space-y-2">
+            {COLORS.map((color) => (
+              <div key={color} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`color-${color}`}
+                  checked={filters.colors.includes(color)}
+                  onCheckedChange={() => toggleColor(color)}
+                />
+                <Label
+                  htmlFor={`color-${color}`}
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  {color}
+                </Label>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Commander Identity */}
+        <div className="space-y-3">
+          <h3 className="font-semibold text-foreground text-sm">Commander Identity</h3>
+          <div className="space-y-2">
+            {COMMANDER_IDENTITY.map((color) => (
+              <div key={color} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`commander-${color}`}
+                  checked={filters.commanderIdentity.includes(color)}
+                  onCheckedChange={() => toggleCommanderIdentity(color)}
+                />
+                <Label
+                  htmlFor={`commander-${color}`}
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  {color}
+                </Label>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Type */}
+        <div className="space-y-2">
+          <Label htmlFor="type" className="text-sm font-semibold">
+            Type
+          </Label>
+          <Input
+            id="type"
+            placeholder="e.g., Legendary Creature"
+            value={filters.type}
+            onChange={(e) => setFilters((prev) => ({ ...prev, type: e.target.value }))}
+            className="bg-background border-border text-foreground"
+          />
+        </div>
+
+        {/* CMC */}
+        <div className="space-y-2">
+          <Label htmlFor="cmc" className="text-sm font-semibold">
+            CMC
+          </Label>
+          <Input
+            id="cmc"
+            type="number"
+            min="0"
+            placeholder="0"
+            value={filters.cmc}
+            onChange={(e) => setFilters((prev) => ({ ...prev, cmc: e.target.value }))}
+            className="bg-background border-border text-foreground"
+          />
+        </div>
+
+        {/* Rarity */}
+        <div className="space-y-3">
+          <h3 className="font-semibold text-foreground text-sm">Rarity</h3>
+          <RadioGroup
+            value={filters.rarity[0] || 'any'}
+            onValueChange={(value) =>
+              setFilters((prev) => ({ ...prev, rarity: value === 'any' ? [] : [value] }))
+            }
+          >
+            {/* 🔥 Added an "Any" option to allow deselection */}
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="any" id="rarity-any" />
+              <Label htmlFor="rarity-any" className="text-sm font-normal cursor-pointer text-muted-foreground">
+                Any / Clear
+              </Label>
+            </div>
+            {RARITIES.map((rarity) => (
+              <div key={rarity} className="flex items-center space-x-2">
+                <RadioGroupItem value={rarity.toLowerCase()} id={`rarity-${rarity}`} />
+                <Label
+                  htmlFor={`rarity-${rarity}`}
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  {rarity}
+                </Label>
+              </div>
+            ))}
+          </RadioGroup>
+        </div>
+
+        {/* Text/Ability */}
+        <div className="space-y-2">
+          <Label htmlFor="text" className="text-sm font-semibold">
+            Text/Ability
+          </Label>
+          <Textarea
+            id="text"
+            placeholder="Search card abilities..."
+            value={filters.text}
+            onChange={(e) => setFilters((prev) => ({ ...prev, text: e.target.value }))}
+            className="bg-background border-border text-foreground min-h-24 resize-none"
+          />
+        </div>
+
+        {/* Power */}
+        <div className="space-y-2">
+          <Label htmlFor="power" className="text-sm font-semibold">
+            Power
+          </Label>
+          <Input
+            id="power"
+            type="number"
+            min="0"
+            placeholder="0"
+            value={filters.power}
+            onChange={(e) => setFilters((prev) => ({ ...prev, power: e.target.value }))}
+            className="bg-background border-border text-foreground"
+          />
+        </div>
+
+        {/* Toughness */}
+        <div className="space-y-2">
+          <Label htmlFor="toughness" className="text-sm font-semibold">
+            Toughness
+          </Label>
+          <Input
+            id="toughness"
+            type="number"
+            min="0"
+            placeholder="0"
+            value={filters.toughness}
+            onChange={(e) => setFilters((prev) => ({ ...prev, toughness: e.target.value }))}
+            className="bg-background border-border text-foreground"
+          />
+        </div>
+      </div>
+    </aside>
+  );
+}
