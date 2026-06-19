@@ -147,15 +147,18 @@ export default function Page() {
 
       if (cardName) apiFilters.card_name = cardName;
 
-      if (sidebarFilters.colors.length > 0 || sidebarFilters.colorMatch === 'exact') {
+      if (sidebarFilters.colors && sidebarFilters.colors.length > 0) {
         const mappedColors = sidebarFilters.colors.map(c => colorMap[c]);
         const isExact = sidebarFilters.colorMatch === 'exact';
+        const includesColorless = mappedColors.includes('C');
+
+        const enforceFalse = isExact || includesColorless;
         
-        if (mappedColors.includes('W')) apiFilters.w = true; else if (isExact) apiFilters.w = false;
-        if (mappedColors.includes('U')) apiFilters.u = true; else if (isExact) apiFilters.u = false;
-        if (mappedColors.includes('B')) apiFilters.b = true; else if (isExact) apiFilters.b = false;
-        if (mappedColors.includes('R')) apiFilters.r = true; else if (isExact) apiFilters.r = false;
-        if (mappedColors.includes('G')) apiFilters.g = true; else if (isExact) apiFilters.g = false;
+        if (mappedColors.includes('W')) apiFilters.w = true; else if (enforceFalse) apiFilters.w = false;
+        if (mappedColors.includes('U')) apiFilters.u = true; else if (enforceFalse) apiFilters.u = false;
+        if (mappedColors.includes('B')) apiFilters.b = true; else if (enforceFalse) apiFilters.b = false;
+        if (mappedColors.includes('R')) apiFilters.r = true; else if (enforceFalse) apiFilters.r = false;
+        if (mappedColors.includes('G')) apiFilters.g = true; else if (enforceFalse) apiFilters.g = false;
       }
 
       if (sidebarFilters.commanderIdentity && sidebarFilters.commanderIdentity.length > 0) {

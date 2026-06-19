@@ -27,7 +27,7 @@ interface SearchSidebarProps {
   isLoading?: boolean;
 }
 
-const COLORS = ['White', 'Blue', 'Black', 'Red', 'Green'];
+const COLORS = ['White', 'Blue', 'Black', 'Red', 'Green', 'Colorless'];
 const COMMANDER_IDENTITY = ['White', 'Blue', 'Black', 'Red', 'Green', 'Colorless'];
 const RARITIES = ['Common', 'Uncommon', 'Rare', 'Mythic'];
 
