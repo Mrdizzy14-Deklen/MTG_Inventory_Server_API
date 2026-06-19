@@ -591,7 +591,7 @@ def search_cards(request: CardSearchRequest, user_id: int = Depends(get_current_
         finally:
             db.close()
 
-app.mount("/images", StaticFiles(directory="images", headers={"Cache-Control": "public, max-age=604800, immutable"}), name="images")
+app.mount("/images", StaticFiles(directory="images"), name="images")
 
 class TradePreferenceRequest(BaseModel):
     oracle_id: str = None   # Specific card
