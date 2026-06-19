@@ -113,7 +113,7 @@ export default function Page() {
   }, [router]);
 
   const emptySidebarFilters: SidebarFilters = {
-    colors: [], commanderIdentity: [], type: '', cmc: '', rarity: [], text: '', power: '', toughness: '', quantityOperator: '>=', quantityValue: ''
+    colors: [], colorMatch: 'exact', commanderIdentity: [], type: '', cmc: '', rarity: [], text: '', power: '', toughness: '', quantityOperator: '>=', quantityValue: ''
   };
 
   const handleSearch = async (sidebarFilters: SidebarFilters = emptySidebarFilters) => {
@@ -147,14 +147,15 @@ export default function Page() {
 
       if (cardName) apiFilters.card_name = cardName;
 
-      if (sidebarFilters.colors && sidebarFilters.colors.length > 0) {
+      if (sidebarFilters.colors.length > 0 || sidebarFilters.colorMatch === 'exact') {
         const mappedColors = sidebarFilters.colors.map(c => colorMap[c]);
+        const isExact = sidebarFilters.colorMatch === 'exact';
         
-        if (mappedColors.includes('W')) apiFilters.w = true;
-        if (mappedColors.includes('U')) apiFilters.u = true;
-        if (mappedColors.includes('B')) apiFilters.b = true;
-        if (mappedColors.includes('R')) apiFilters.r = true;
-        if (mappedColors.includes('G')) apiFilters.g = true;
+        if (mappedColors.includes('W')) apiFilters.w = true; else if (isExact) apiFilters.w = false;
+        if (mappedColors.includes('U')) apiFilters.u = true; else if (isExact) apiFilters.u = false;
+        if (mappedColors.includes('B')) apiFilters.b = true; else if (isExact) apiFilters.b = false;
+        if (mappedColors.includes('R')) apiFilters.r = true; else if (isExact) apiFilters.r = false;
+        if (mappedColors.includes('G')) apiFilters.g = true; else if (isExact) apiFilters.g = false;
       }
 
       if (sidebarFilters.commanderIdentity && sidebarFilters.commanderIdentity.length > 0) {

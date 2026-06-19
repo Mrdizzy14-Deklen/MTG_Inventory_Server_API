@@ -10,6 +10,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 export interface SearchFilters {
   colors: string[];
+  colorMatch: string;
   commanderIdentity: string[];
   type: string;
   cmc: string;
@@ -33,6 +34,7 @@ const RARITIES = ['Common', 'Uncommon', 'Rare', 'Mythic'];
 export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProps) {
   const [filters, setFilters] = useState<SearchFilters>({
     colors: [],
+    colorMatch: 'exact',
     commanderIdentity: [],
     type: '',
     cmc: '',
@@ -126,7 +128,15 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
                 </Label>
               </div>
             ))}
-          </div>
+          <select
+            className="mt-2 flex w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            value={filters.colorMatch}
+            onChange={(e) => setFilters(prev => ({ ...prev, colorMatch: e.target.value }))}
+          >
+            <option value="including">Including these colors</option>
+            <option value="exact">Exactly these colors</option>
+          </select>
+        </div>
         </div>
 
         {/* Commander Identity */}
