@@ -27,6 +27,7 @@ export interface SearchFilters {
 
 interface SearchSidebarProps {
   onSearch: (filters: SearchFilters) => void;
+  onClear?: () => void;
   isLoading?: boolean;
 }
 
@@ -34,7 +35,7 @@ const COLORS = ['White', 'Blue', 'Black', 'Red', 'Green', 'Colorless'];
 const COMMANDER_IDENTITY = ['White', 'Blue', 'Black', 'Red', 'Green', 'Colorless'];
 const RARITIES = ['Common', 'Uncommon', 'Rare', 'Mythic'];
 
-export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProps) {
+export function SearchSidebar({ onSearch, onClear, isLoading = false }: SearchSidebarProps) {
   const [filters, setFilters] = useState<SearchFilters>({
     colors: [],
     colorMatch: 'exact',
@@ -70,6 +71,15 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
     }));
   };
 
+  const handleClear = () => {
+    setFilters({
+      colors: [], colorMatch: 'exact', commanderIdentity: [], type: '', rarity: [], text: '',
+      quantityOperator: '>=', quantity: '', mana_costOperator: '=', mana_cost: '',
+      powerOperator: '=', power: '', toughnessOperator: '=', toughness: '',
+    });
+    if (onClear) onClear();
+  };
+
   const handleSearch = () => {
     onSearch(filters);
   };
@@ -77,13 +87,23 @@ export function SearchSidebar({ onSearch, isLoading = false }: SearchSidebarProp
   return (
     <aside className="w-64 bg-card border-r border-border p-6 overflow-y-auto max-h-screen">
       <div className="space-y-6">
-        <Button
-          onClick={handleSearch}
-          disabled={isLoading}
-          className="w-full bg-indigo-600 text-white hover:bg-indigo-700"
-        >
-          {isLoading ? 'Searching...' : 'Search'}
-        </Button>
+        <div className="space-y-2">
+          <Button
+            onClick={handleSearch}
+            disabled={isLoading}
+            className="w-full bg-indigo-600 text-white hover:bg-indigo-700"
+          >
+            {isLoading ? 'Searching...' : 'Search'}
+          </Button>
+          <Button
+            onClick={handleClear}
+            disabled={isLoading}
+            variant="outline"
+            className="w-full border-border hover:bg-muted text-foreground"
+          >
+            Clear Search
+          </Button>
+        </div>
 
         {/* Quantity Owned */}
         <div className="space-y-2">

@@ -124,6 +124,24 @@ export default function Page() {
     quantity: '', quantityOperator: '>='
   };
 
+  const handleClearAll = async () => {
+    setCardName('');
+    setShowUnowned(false);
+    setIsSearching(true);
+    try {
+      const inventory = await fetchInventory();
+      setCards(inventory);
+    } catch (error: any) {
+      console.error('Failed to load inventory:', error);
+      if (error.message?.includes('401')) {
+        Cookies.remove('authToken');
+        router.push('/login');
+      }
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   const handleSearch = async (sidebarFilters: SidebarFilters = emptySidebarFilters) => {
     setIsSearching(true);
     try {
@@ -250,7 +268,11 @@ export default function Page() {
 
   return (
     <div className="flex h-screen bg-background">
-      <SearchSidebar onSearch={handleSearch} isLoading={isSearching} />
+      <SearchSidebar 
+        onSearch={handleSearch} 
+        onClear={handleClearAll} 
+        isLoading={isSearching} 
+      />
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="border-b border-border p-6 bg-card space-y-4">
