@@ -120,11 +120,11 @@ export function CardGrid({
             <button
               key={`${oracleId || displayName}-${index}`}
               onClick={() => onCardClick(card)}
-              className={`group relative rounded-xl border transition-all focus:outline-none ${borderStyle} ${
-                !isOwned ? 'opacity-50 grayscale' : ''
-              }`}
+              className={`group relative rounded-xl border transition-all focus:outline-none ${borderStyle}`}
             >
-              <div className="relative w-full aspect-[2.5/3.5] bg-muted rounded-xl overflow-hidden flex items-center justify-center border border-border/50 shadow-xl">
+              <div className={`relative w-full aspect-[2.5/3.5] bg-muted rounded-xl overflow-hidden flex items-center justify-center border border-border/50 shadow-xl transition-all ${
+                !isOwned ? 'opacity-50 grayscale' : ''
+              }`}>
                 {card.oracle_id ? (
                   <img
                     src={`${API_BASE_URL}/images/${card.oracle_id}.jpg`}
