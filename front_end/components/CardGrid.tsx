@@ -103,11 +103,24 @@ export function CardGrid({
           const displayName = card.card_name || card.name; 
           const oracleId = card.oracle_id;
 
+          const pref = oracleId ? preferences[oracleId] : null;
+          let borderStyle = "border-border hover:border-primary hover:shadow-lg focus:ring-2 focus:ring-primary"; // Default
+          
+          if (pref) {
+            if (pref.status === 'for_trade') {
+              borderStyle = "border-transparent ring-2 ring-offset-2 ring-offset-background ring-green-500 shadow-[0_0_15px_rgba(34,197,94,0.4)]";
+            } else if (pref.status === 'looking_for') {
+              borderStyle = "border-transparent ring-2 ring-offset-2 ring-offset-background ring-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.4)]";
+            } else if (pref.status === 'not_for_trade') {
+              borderStyle = "border-transparent ring-2 ring-offset-2 ring-offset-background ring-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)]";
+            }
+          }
+
           return (
             <button
               key={`${oracleId || displayName}-${index}`}
               onClick={() => onCardClick(card)}
-              className={`group relative overflow-hidden rounded-xl border border-border transition-all hover:border-primary hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary ${
+              className={`group relative rounded-xl border transition-all focus:outline-none ${borderStyle} ${
                 !isOwned ? 'opacity-50 grayscale' : ''
               }`}
             >
@@ -133,16 +146,16 @@ export function CardGrid({
               )}
 
               {/* Hover Overlay */}
-              <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3 z-20 text-left">
+              <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3 z-20 text-left rounded-xl overflow-hidden">
                 <p className="text-sm font-bold text-white line-clamp-2">{displayName}</p>
                 {card.type_line && (
                   <p className="text-xs text-zinc-300 truncate mt-1">{card.type_line}</p>
                 )}
                 
-                {preferences[card.oracle_id] && (
+                {pref && (
                    <div className="mt-2 pt-2 border-t border-zinc-600 text-xs text-indigo-300">
-                     <p>Status: {preferences[card.oracle_id].status}</p>
-                     <p>Condition: {preferences[card.oracle_id].condition}</p>
+                     <p>Status: {pref.status}</p>
+                     {pref.condition && <p>Condition: {pref.condition}</p>}
                    </div>
                 )}
               </div>
