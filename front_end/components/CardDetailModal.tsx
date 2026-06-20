@@ -48,7 +48,7 @@ export function CardDetailModal({
   useEffect(() => {
     if (isOpen) {
       if (currentPreference) {
-        
+
         const reverseEnumMap: Record<string, string> = {
           'for_trade': 'For Trade',
           'looking_for': 'Looking For',
@@ -73,12 +73,15 @@ export function CardDetailModal({
   };
 
   const displayName = card.card_name || card.name || 'Unknown Card';
+  const isClearingPreference = selectedPreference === null && currentPreference !== undefined;
+  const canSubmit = selectedPreference !== null || isClearingPreference;
 
   const handleUpdatePreference = async () => {
-    if (!selectedPreference || !card.oracle_id) return;
+    if (!canSubmit || !card.oracle_id) return;
     setIsLoading(true);
     try {
-      await onUpdatePreference(card.oracle_id, selectedPreference, title, notes);
+      // Pass an empty string if null to trigger the delete logic in page.tsx
+      await onUpdatePreference(card.oracle_id, selectedPreference || '', title, notes);
       onClose();
     } finally {
       setIsLoading(false);
@@ -228,10 +231,14 @@ export function CardDetailModal({
 
               <Button
                 onClick={handleUpdatePreference}
-                disabled={!isPreferenceSelected || isLoading}
-                className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+                disabled={!canSubmit || isLoading}
+                className={`w-full ${
+                  isClearingPreference 
+                    ? 'bg-red-600 hover:bg-red-700 text-white' 
+                    : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                }`}
               >
-                {isLoading ? 'Updating...' : 'Update Preference'}
+                {isLoading ? 'Updating...' : (isClearingPreference ? 'Remove Preference' : 'Update Preference')}
               </Button>
             </div>
           </div>

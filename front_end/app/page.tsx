@@ -202,6 +202,21 @@ export default function Page() {
   const handleUpdatePreference = async (oracleId: string, preference: string, title: string, notes: string) => {
     try {
       
+      if (preference === '') {
+        await removePreference({
+          oracle_id: oracleId,
+          status: 'not_for_trade',
+          tag: preferences[oracleId]?.tag || undefined,
+        });
+
+        setPreferences(prev => {
+          const next = { ...prev };
+          delete next[oracleId];
+          return next;
+        });
+        return;
+      }
+
       const enumMap: Record<string, string> = {
         'For Trade': 'for_trade',
         'Looking For': 'looking_for',
