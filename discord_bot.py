@@ -48,7 +48,7 @@ async def handle_verification_request(request):
             color=discord.Color.blurple()
         )
 
-        await member.send(embed=embed)
+        await member.send(embed=embed, delete_after=300)
 
         print(f"Successfully sent verification DM to {discord_handle}")
         
