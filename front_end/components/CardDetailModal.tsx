@@ -195,38 +195,36 @@ export function CardDetailModal({
               </div>
             </div>
 
-            {/* Title and Notes - grayed out until preference selected */}
-            <div
-              className={`space-y-4 p-4 rounded-lg bg-muted/20 border border-border transition-opacity ${
-                !isPreferenceSelected ? 'opacity-50 pointer-events-none' : ''
-              }`}
-            >
-              <div className="space-y-2">
-                <Label htmlFor="trade-title" className="text-sm font-semibold">
-                  Trade Title (Optional)
-                </Label>
-                <Input
-                  id="trade-title"
-                  placeholder="e.g., 'Trading for value'"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  disabled={!isPreferenceSelected}
-                  className="bg-background border-border text-foreground disabled:opacity-50"
-                />
-              </div>
+            {/* Title and Notes Container */}
+            <div className="space-y-4 p-4 rounded-lg bg-muted/20 border border-border">
+              <div className={`space-y-4 transition-opacity ${!isPreferenceSelected ? 'opacity-50 pointer-events-none' : ''}`}>
+                <div className="space-y-2">
+                  <Label htmlFor="trade-title" className="text-sm font-semibold">
+                    Trade Title (Optional)
+                  </Label>
+                  <Input
+                    id="trade-title"
+                    placeholder="e.g., 'Trading for value'"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    disabled={!isPreferenceSelected}
+                    className="bg-background border-border text-foreground disabled:opacity-50"
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="trade-notes" className="text-sm font-semibold">
-                  Notes (Optional)
-                </Label>
-                <Textarea
-                  id="trade-notes"
-                  placeholder="Add any notes about this trade..."
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  disabled={!isPreferenceSelected}
-                  className="bg-background border-border text-foreground min-h-24 resize-none disabled:opacity-50"
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="trade-notes" className="text-sm font-semibold">
+                    Notes (Optional)
+                  </Label>
+                  <Textarea
+                    id="trade-notes"
+                    placeholder="Add any notes about this trade..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    disabled={!isPreferenceSelected}
+                    className="bg-background border-border text-foreground min-h-24 resize-none disabled:opacity-50"
+                  />
+                </div>
               </div>
 
               <Button
