@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -28,6 +28,7 @@ interface CardDetailModalProps {
     title: string,
     notes: string
   ) => Promise<void>;
+  currentPreference?: any;
 }
 
 type PreferenceType = 'For Trade' | 'Looking For' | 'Not For Trade' | null;
@@ -37,11 +38,35 @@ export function CardDetailModal({
   isOpen,
   onClose,
   onUpdatePreference,
+  currentPreference
 }: CardDetailModalProps) {
   const [selectedPreference, setSelectedPreference] = useState<PreferenceType>(null);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (currentPreference) {
+        
+        const reverseEnumMap: Record<string, string> = {
+          'for_trade': 'For Trade',
+          'looking_for': 'Looking For',
+          'not_for_trade': 'Not For Trade'
+        };
+
+        const mappedStatus = reverseEnumMap[currentPreference.status] as PreferenceType;
+
+        setSelectedPreference(mappedStatus || null);
+        setTitle(currentPreference.tag || '');
+        setNotes(currentPreference.notes || '');
+      } else {
+        setSelectedPreference(null);
+        setTitle('');
+        setNotes('');
+      }
+    }
+  }, [isOpen, currentPreference]);
 
   const handlePreferenceChange = (preference: PreferenceType) => {
     setSelectedPreference(preference);

@@ -201,18 +201,31 @@ export default function Page() {
 
   const handleUpdatePreference = async (oracleId: string, preference: string, title: string, notes: string) => {
     try {
+      
       const enumMap: Record<string, string> = {
         'For Trade': 'for_trade',
         'Looking For': 'looking_for',
         'Not For Trade': 'not_for_trade'
       };
-
+      
+      const mappedStatus = enumMap[preference] || preference;
+      
       await updatePreference({
         oracle_id: oracleId,
         status: enumMap[preference],
         tag: title || undefined,
         notes: notes || undefined,
       });
+
+      setPreferences(prev => ({
+        ...prev,
+        [oracleId]: {
+          oracle_id: oracleId,
+          status: mappedStatus,
+          tag: title || '',
+          notes: notes || ''
+        }
+      }));
 
     } catch (error) {
       console.error('Failed to update preference:', error);
@@ -303,6 +316,7 @@ export default function Page() {
         <CardDetailModal
           card={selectedCard}
           isOpen={isDetailModalOpen}
+          currentPreference={preferences[selectedCard.oracle_id]}
           onClose={() => {
             setIsDetailModalOpen(false);
             setSelectedCard(null);
