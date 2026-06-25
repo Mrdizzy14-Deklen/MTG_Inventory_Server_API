@@ -135,6 +135,42 @@ def username_get_user(username: str):
 
     return user
 
+# Check if user is a dummy account
+def check_is_dummy(id: int | None = None, username: str | None = None) -> bool:
+
+    if id is None: 
+
+        if username is None:
+            raise ValueError("You must provide either an id or a username")
+        
+        id = username_get_user(username)['id']
+
+
+    db = get_db()
+    with db.cursor(dictionary=True) as cursor:
+        try:
+
+            cursor.execute(
+                """
+                SELECT is_dummy 
+                FROM users 
+                WHERE id = %s
+                """, 
+                (id,)
+            )
+            result = cursor.fetchone()
+
+            return bool(result and result.get('is_dummy'))
+        
+        except mysql.connector.Error as e:
+
+            print(f"Dummy check error: {e}")
+            
+            raise HTTPException(status_code=500, detail="Database error.")
+        
+        finally:
+            db.close()
+
 # Sends a verification DM via discord
 async def trigger_discord_bot(discord_handle: str, token: str, username: str):
 
@@ -690,6 +726,9 @@ class TradePreferenceRequest(BaseModel):
 @api_router.post("/move_card")
 def move_card(request: MoveCardRequest, user_id: int = Depends(JWT_get_user)):
 
+    if check_is_dummy(id=user_id) or check_is_dummy(id=request.to_username):
+        raise ValueError("Dummy users cannot move cards")
+
     db = get_db()
     with db.cursor(dictionary=True) as cursor:
         try:
@@ -751,6 +790,9 @@ def move_card(request: MoveCardRequest, user_id: int = Depends(JWT_get_user)):
 # Move bulk cards between users
 @api_router.post("/move_bulk")
 def move_bulk(request: MoveBulkCardRequest, user_id: int = Depends(JWT_get_user)):
+
+    if check_is_dummy(id=user_id) or check_is_dummy(id=request.to_username):
+        raise ValueError("Dummy users cannot move cards")
 
     to_user = username_get_user(request.to_username)
     if not to_user:

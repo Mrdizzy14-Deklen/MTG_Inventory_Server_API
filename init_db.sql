@@ -71,3 +71,6 @@ CREATE TABLE IF NOT EXISTS pending_users (
 
 -- 2026-06-18
 ALTER TABLE trade_preferences ADD UNIQUE KEY unique_user_card (user_id, oracle_id);
+
+-- 2026-06-25
+ALTER TABLE users ADD COLUMN is_dummy TINYINT(1) DEFAULT 0;
