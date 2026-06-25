@@ -86,6 +86,9 @@ def scryfall_sync():
             if not oracle_id:
                 continue
 
+            if card.get('name').startswith('A-'):
+                continue
+
             colors = card.get('color_identity', [])
 
             w = 1 if 'W' in colors else 0
