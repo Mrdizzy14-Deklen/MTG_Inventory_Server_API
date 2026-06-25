@@ -377,6 +377,14 @@ def verify(token: str):
             print(f"Verification error: {e}")
 
             if e.errno == 1062:
+                
+                cursor.execute(
+                    "DELETE FROM pending_users WHERE verify_token = %s", 
+                    (token,)
+                )
+                
+                db.commit()
+
                 return "<html><body style='color: white; background: #09090b'><h2>Error</h2><p>This username was taken while you were pending.</p></body></html>"
             
             return "<html><body style='color: white; background: #09090b'><h2>Error</h2><p>Database error during verification.</p></body></html>"
