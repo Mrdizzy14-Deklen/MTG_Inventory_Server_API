@@ -108,7 +108,7 @@ export function CardDetailModal({
 
         <div className="flex gap-8 p-6">
           {/* Card Image */}
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 flex flex-col items-center">
             <div className="relative w-64 h-89 rounded-lg bg-muted overflow-hidden border border-border flex items-center justify-center shadow-lg">
               {card.oracle_id ? (
                 <img
@@ -123,8 +123,19 @@ export function CardDetailModal({
                 <span className="text-muted-foreground">No image available</span>
               )}
             </div>
+            
+            {/* Scryfall Link */}
+            <a
+              href={card.scryfall_uri || `https://scryfall.com/search?q=!"${encodeURIComponent(displayName)}"`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 text-sm font-medium text-primary hover:underline hover:text-primary/80 transition-colors"
+            >
+              Scryfall Page
+            </a>
+
             {isOwned && (
-              <div className="mt-3 text-center text-sm font-semibold text-indigo-400">
+              <div className="mt-2 text-center text-sm font-semibold text-indigo-400">
                 Quantity Owned: {card.quantity}
               </div>
             )}
