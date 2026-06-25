@@ -220,7 +220,10 @@ async def trigger_discord_bot(discord_handle: str, token: str, username: str):
                         (token,)
                     )
                     print_notify(f"Failed to DM {discord_handle} for user {username}. Pending user deleted.", severity=1)
-                
+         
+                db.commit()  
+            db.close()
+
         if data.get("status") == "success":
             
             await asyncio.sleep(300)  # Sleep for 5 minutes
