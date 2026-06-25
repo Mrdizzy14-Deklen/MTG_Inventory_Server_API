@@ -38,7 +38,10 @@ app = FastAPI()
 app.mount("/images", StaticFiles(directory="images"), name="images")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://mtg.deklenn.dev"], # Frontend origin
+    allow_origins=[
+        "https://mtg.deklenn.dev"   # Frontend origin, 
+        "http://localhost:3000"     # Local testing 
+        ], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
