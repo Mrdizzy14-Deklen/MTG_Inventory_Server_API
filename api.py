@@ -131,9 +131,6 @@ def username_get_user(username: str):
             )
             user = cursor.fetchone()
 
-            cursor.close()
-            db.close()
-
             return user
         
         except mysql.connector.Error as e:
