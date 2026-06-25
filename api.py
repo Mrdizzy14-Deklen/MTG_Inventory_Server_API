@@ -6,6 +6,7 @@ import os
 import secrets
 from typing import List, Optional
 
+import asyncio
 from fastapi import FastAPI, HTTPException, Request, Security, Depends, BackgroundTasks, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
@@ -220,6 +221,23 @@ async def trigger_discord_bot(discord_handle: str, token: str, username: str):
                     )
                     print_notify(f"Failed to DM {discord_handle} for user {username}. Pending user deleted.", severity=1)
                 
+        if data.get("status") == "success":
+            
+            await asyncio.sleep(300)  # Sleep for 5 minutes
+            
+            db = get_db()
+            with db.cursor() as cursor:
+                cursor.execute(
+                    """
+                    DELETE FROM pending_users 
+                    WHERE verify_token = %s
+                    """, 
+                    (token,)
+                )
+                
+                if cursor.rowcount > 0:
+                    print_notify(f"Verification for {username} timed out after 5 minutes. Removed from pending.", severity=3)
+
                 db.commit()
             db.close()
                 
