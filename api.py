@@ -118,22 +118,32 @@ def JWT_get_user(token: str = Depends(oauth2_scheme)):
 def username_get_user(username: str):
 
     db = get_db()
-    cursor = db.cursor(dictionary=True)
+    with db.cursor(dictionary=True) as cursor:
+        try:
 
-    cursor.execute(
-        """
-        SELECT * 
-        FROM users 
-        WHERE username = %s
-        """, 
-        (username,)
-    )
-    user = cursor.fetchone()
+            cursor.execute(
+                """
+                SELECT * 
+                FROM users 
+                WHERE username = %s
+                """, 
+                (username,)
+            )
+            user = cursor.fetchone()
 
-    cursor.close()
-    db.close()
+            cursor.close()
+            db.close()
 
-    return user
+            return user
+        
+        except mysql.connector.Error as e:
+
+            print(f"User fetch error: {e}")
+            
+            raise HTTPException(status_code=500, detail="Database error.")
+        
+        finally:
+            db.close()
 
 # Check if user is a dummy account
 def check_is_dummy(id: int | None = None, username: str | None = None) -> bool:
